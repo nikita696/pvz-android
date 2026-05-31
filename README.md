@@ -2,6 +2,8 @@
 
 Minimal mobile schedule and payroll app for one PVZ.
 
+Production preview: https://pvz-android.vercel.app
+
 ## What is inside
 
 - Main screen is the work calendar.
@@ -23,6 +25,9 @@ For Expo Go or Android builds that call a deployed backend, set:
 ```bash
 EXPO_PUBLIC_API_BASE_URL=https://your-vercel-preview-or-prod-url
 ```
+
+The native app defaults to `https://pvz-android.vercel.app` when this variable is not set.
+The deployed API needs `DATABASE_URL` in Vercel before it can store schedule data.
 
 ## Commands
 
