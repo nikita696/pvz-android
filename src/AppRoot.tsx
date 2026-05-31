@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, RefreshCw, UserPlus } from 'lucide-react-native';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, UserPlus } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -140,6 +140,10 @@ export default function AppRoot() {
     setDialog(null);
   }
 
+  async function deleteEmployee(employeeId: string) {
+    await mutate({ action: 'archiveEmployee', employeeId });
+  }
+
   const selectedDateLabel = formatDate(selectedDate);
 
   return (
@@ -211,9 +215,22 @@ export default function AppRoot() {
                         <Text style={styles.employeeName}>{employee.name}</Text>
                         <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
                       </View>
-                      <Text style={[styles.shiftStatus, active && styles.shiftStatusActive]}>
-                        {active ? 'Отработал' : 'Выходной'}
-                      </Text>
+                      <View style={styles.shiftActions}>
+                        <Text style={[styles.shiftStatus, active && styles.shiftStatusActive]}>
+                          {active ? 'Отработал' : 'Выходной'}
+                        </Text>
+                        <Pressable
+                          style={styles.deleteButton}
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            void deleteEmployee(employee.id);
+                          }}
+                          hitSlop={8}
+                          testID={`delete-employee-${employee.name}`}
+                        >
+                          <Trash2 size={18} color={colors.dangerText} />
+                        </Pressable>
+                      </View>
                     </Pressable>
                   );
                 })
@@ -733,6 +750,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  shiftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   shiftStatus: {
     fontFamily: appFont,
     color: colors.muted,
@@ -741,6 +763,16 @@ const styles = StyleSheet.create({
   },
   shiftStatusActive: {
     color: colors.accent,
+  },
+  deleteButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   totalCard: {
     borderRadius: 8,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculateSalary, calculateTotalDue, hasShift } from './calculations';
+import { calculateSalary, calculateTotalDue, getShiftCountByDate, hasShift } from './calculations';
 import type { AppState } from './types';
 
 const state: AppState = {
@@ -13,10 +13,18 @@ const state: AppState = {
       active: true,
       createdAt: '2026-05-01T00:00:00.000Z',
     },
+    {
+      id: 'emp-archived',
+      name: 'Архив',
+      dailyRate: 1000,
+      active: false,
+      createdAt: '2026-05-02T00:00:00.000Z',
+    },
   ],
   shifts: [
     { id: 'shift-1', employeeId: 'emp-1', date: '2026-05-02' },
     { id: 'shift-2', employeeId: 'emp-1', date: '2026-05-03' },
+    { id: 'shift-archived', employeeId: 'emp-archived', date: '2026-05-02' },
     { id: 'shift-old', employeeId: 'emp-1', date: '2026-04-30' },
   ],
   payments: [
@@ -43,5 +51,9 @@ describe('minimal payroll formula', () => {
 
   it('sums employee debt for the visible month', () => {
     expect(calculateTotalDue(state, '2026-05')).toBe(4000);
+  });
+
+  it('ignores archived employees in calendar shift counters', () => {
+    expect(getShiftCountByDate(state, '2026-05-02')).toBe(1);
   });
 });

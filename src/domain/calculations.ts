@@ -48,5 +48,9 @@ export function calculateTotalDue(state: AppState, month: string): number {
 }
 
 export function getShiftCountByDate(state: AppState, date: string): number {
-  return state.shifts.filter((shift) => shift.date === date).length;
+  const activeEmployeeIds = new Set(
+    state.employees.filter((employee) => employee.active).map((employee) => employee.id),
+  );
+
+  return state.shifts.filter((shift) => shift.date === date && activeEmployeeIds.has(shift.employeeId)).length;
 }
