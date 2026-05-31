@@ -43,3 +43,5 @@ playwright-report/
 /android
 
 .vercel
+.env*
+!.env.example
