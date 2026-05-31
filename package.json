@@ -3,20 +3,43 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo/metro-runtime": "~56.0.13",
+    "@neondatabase/serverless": "^1.1.0",
     "expo": "~56.0.8",
     "expo-status-bar": "~56.0.4",
+    "lucide-react-native": "^1.17.0",
     "react": "19.2.3",
-    "react-native": "0.85.3"
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "@vercel/node": "^5.8.8",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "serve": "^14.2.6",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.60.0",
+    "vercel": "^54.6.1",
+    "vitest": "^4.1.7"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src",
+    "build": "expo export --platform web --output-dir dist",
+    "web:e2e": "npm run build && serve -s dist -l 8091",
+    "lint": "eslint .",
+    "test:e2e": "playwright test",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "private": true
 }
