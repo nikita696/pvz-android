@@ -189,7 +189,7 @@ export default function AppRoot() {
                 <PencilLine size={14} color={colors.accentText} />
               </View>
             </Pressable>
-            <Text style={styles.subtitle}>График и зарплата без лишнего</Text>
+            <Text style={styles.subtitle}>Удобный трекер смен и выплат</Text>
           </View>
           <Pressable style={styles.iconButton} onPress={loadState} testID="refresh">
             <RefreshCw size={20} color="#17121f" />
