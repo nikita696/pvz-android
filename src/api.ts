@@ -1,6 +1,10 @@
 import type { ApiAction, AppState } from './domain/types';
+import { Platform } from 'react-native';
 
-const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? '';
+const nativeApiBaseUrl = 'https://pvz-android.vercel.app';
+const apiBaseUrl =
+  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
+  (Platform.OS === 'web' ? '' : nativeApiBaseUrl);
 
 export async function fetchState(): Promise<AppState> {
   const response = await fetch(`${apiBaseUrl}/api/state`);
