@@ -121,6 +121,17 @@ export async function addEmployee(name: string, dailyRate: number) {
   `;
 }
 
+export async function updateLocationName(name: string) {
+  const sql = getSql();
+  await ensureSchema();
+  await sql`
+    insert into locations (id, name)
+    values (${DEFAULT_LOCATION.id}, ${name})
+    on conflict (id) do update
+    set name = excluded.name
+  `;
+}
+
 export async function archiveEmployee(employeeId: string) {
   const sql = getSql();
   await ensureSchema();

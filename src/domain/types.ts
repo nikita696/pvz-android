@@ -41,6 +41,7 @@ export interface SalarySummary {
 }
 
 export type ApiAction =
+  | { action: 'updateLocation'; name: string }
   | { action: 'addEmployee'; name: string; dailyRate: number }
   | { action: 'toggleShift'; employeeId: string; date: string }
   | { action: 'addPayment'; employeeId: string; amount: number; paidAt: string }

@@ -7,6 +7,7 @@ import {
   archiveEmployee,
   getState,
   toggleShift,
+  updateLocationName,
 } from './_db';
 import type { ApiAction } from '../src/domain/types';
 
@@ -63,6 +64,15 @@ async function applyAction(body: ApiAction) {
     }
 
     await addEmployee(body.name.trim(), body.dailyRate);
+    return;
+  }
+
+  if (body.action === 'updateLocation') {
+    if (!body.name.trim()) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await updateLocationName(body.name.trim());
     return;
   }
 

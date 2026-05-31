@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { ApiAction, AppState } from '../src/domain/types';
 
 const LOCATION = '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043f\u0443\u043d\u043a\u0442';
+const UPDATED_LOCATION = '\u041f\u0412\u0417 \u043d\u0430 \u041b\u0435\u0441\u043d\u043e\u0439';
 const CALENDAR = '\u041a\u0430\u043b\u0435\u043d\u0434\u0430\u0440\u044c';
 const ANNA = '\u0410\u043d\u043d\u0430';
 const IRA = '\u0418\u0440\u0430';
@@ -64,6 +65,13 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
       };
     }
 
+    if (action.action === 'updateLocation') {
+      serverState = {
+        ...serverState,
+        location: { ...serverState.location, name: action.name },
+      };
+    }
+
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -76,6 +84,12 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText(LOCATION)).toBeVisible();
   await expect(page.getByText(CALENDAR)).toBeVisible();
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
+
+  await page.getByTestId('open-location-editor').click();
+  await page.getByTestId('location-name').fill(UPDATED_LOCATION);
+  await page.getByTestId('save-location').click();
+
+  await expect(page.getByText(UPDATED_LOCATION)).toBeVisible();
 
   await page.getByTestId('open-add-employee').click();
   await page.getByTestId('employee-name').fill(IRA);

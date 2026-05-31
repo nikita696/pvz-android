@@ -1,5 +1,14 @@
 import { StatusBar } from 'expo-status-bar';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, UserPlus } from 'lucide-react-native';
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  PencilLine,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UserPlus,
+} from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -56,13 +65,14 @@ const colors = {
   dangerText: '#ffc7cd',
 };
 
-type DialogName = 'employee' | 'payment' | null;
+type DialogName = 'employee' | 'location' | 'payment' | null;
 
 export default function AppRoot() {
   const [state, setState] = useState<AppState>(emptyAppState);
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [dialog, setDialog] = useState<DialogName>(null);
+  const [locationName, setLocationName] = useState('');
   const [employeeName, setEmployeeName] = useState('');
   const [dailyRate, setDailyRate] = useState('2500');
   const [paymentEmployeeId, setPaymentEmployeeId] = useState('');
@@ -125,6 +135,21 @@ export default function AppRoot() {
     setDialog(null);
   }
 
+  function openLocationDialog() {
+    setLocationName(state.location.name);
+    setDialog('location');
+  }
+
+  async function saveLocationName() {
+    if (!locationName.trim()) {
+      setError('Укажи название ПВЗ.');
+      return;
+    }
+
+    await mutate({ action: 'updateLocation', name: locationName.trim() });
+    setDialog(null);
+  }
+
   async function addPayment() {
     const amount = Number(paymentAmount);
     const employeeId = paymentEmployeeId || activeEmployees[0]?.id;
@@ -151,8 +176,19 @@ export default function AppRoot() {
       <StatusBar style="light" />
       <View style={styles.shell}>
         <View style={styles.header}>
-          <View>
-            <Text style={styles.locationName}>{state.location.name}</Text>
+          <View style={styles.headerTitle}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Изменить название ПВЗ"
+              style={styles.locationButton}
+              onPress={openLocationDialog}
+              testID="open-location-editor"
+            >
+              <Text style={styles.locationName}>{state.location.name}</Text>
+              <View style={styles.editBadge}>
+                <PencilLine size={14} color={colors.accentText} />
+              </View>
+            </Pressable>
             <Text style={styles.subtitle}>График и зарплата без лишнего</Text>
           </View>
           <Pressable style={styles.iconButton} onPress={loadState} testID="refresh">
@@ -278,6 +314,13 @@ export default function AppRoot() {
             <Text style={styles.savingText}>Сохраняю</Text>
           </View>
         ) : null}
+
+        <Dialog visible={dialog === 'location'} title="Название ПВЗ" onClose={() => setDialog(null)}>
+          <Field label="Название" value={locationName} onChangeText={setLocationName} testID="location-name" />
+          <Pressable style={styles.primaryButton} onPress={saveLocationName} testID="save-location">
+            <Text style={styles.primaryButtonText}>Сохранить</Text>
+          </Pressable>
+        </Dialog>
 
         <Dialog visible={dialog === 'employee'} title="Новый сотрудник" onClose={() => setDialog(null)}>
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
@@ -562,6 +605,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
+  },
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
+  },
+  locationButton: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   locationName: {
     fontFamily: appFont,
@@ -569,6 +624,17 @@ const styles = StyleSheet.create({
     fontSize: 27,
     lineHeight: 32,
     fontWeight: '800',
+    flexShrink: 1,
+    textDecorationLine: 'underline',
+    textDecorationColor: colors.borderStrong,
+  },
+  editBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   subtitle: {
     fontFamily: appFont,
