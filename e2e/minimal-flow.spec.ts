@@ -4,7 +4,6 @@ import type { ApiAction, AppState } from '../src/domain/types';
 
 const LOCATION = '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043f\u0443\u043d\u043a\u0442';
 const UPDATED_LOCATION = '\u041f\u0412\u0417 \u043d\u0430 \u041b\u0435\u0441\u043d\u043e\u0439';
-const CALENDAR = '\u041a\u0430\u043b\u0435\u043d\u0434\u0430\u0440\u044c';
 const ANNA = '\u0410\u043d\u043d\u0430';
 const IRA = '\u0418\u0440\u0430';
 const RUBLE = '\u20bd';
@@ -17,6 +16,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         id: 'emp-1',
         name: ANNA,
         dailyRate: 2500,
+        color: '#a8d5ba',
         active: true,
         createdAt: '2026-05-01T00:00:00.000Z',
       },
@@ -48,6 +48,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
             id: 'emp-2',
             name: action.name,
             dailyRate: action.dailyRate,
+            color: '#f0dd92',
             active: true,
             createdAt: '2026-05-31T00:00:00.000Z',
           },
@@ -82,7 +83,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByText(LOCATION)).toBeVisible();
-  await expect(page.getByText(CALENDAR)).toBeVisible();
+  await expect(page.getByText('\u043c\u0430\u0439 2026')).toBeVisible();
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
 
   await page.getByTestId('open-location-editor').click();
@@ -91,7 +92,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
   await expect(page.getByText(UPDATED_LOCATION)).toBeVisible();
 
-  await page.getByTestId('open-add-employee').click();
+  await page.getByTestId('open-employees').click();
   await page.getByTestId('employee-name').fill(IRA);
   await page.getByTestId('employee-rate').fill('3000');
   await page.getByTestId('save-employee').click();
@@ -99,6 +100,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText(IRA).first()).toBeVisible();
   await expect(page.getByText(`5 000 ${RUBLE}`).first()).toBeVisible();
 
+  await page.getByTestId('open-employees').click();
   await page.getByTestId(`delete-employee-${IRA}`).click();
 
   await expect(page.getByText(IRA)).toHaveCount(0);

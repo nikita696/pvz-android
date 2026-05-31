@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import type { AppState, Employee, SalaryPayment, Shift } from '../src/domain/types';
 
 const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
+const EMPLOYEE_COLORS = ['#f0dd92', '#a8d5ba', '#94b8ff', '#f5a6c8', '#c6a8ff', '#8fd7d1'];
 
 export class MissingDatabaseUrlError extends Error {
   constructor() {
@@ -95,6 +96,7 @@ export async function getState(): Promise<AppState> {
       id: String(row.id),
       name: String(row.name),
       dailyRate: Number(row.daily_rate),
+      color: getEmployeeColor(String(row.id)),
       active: Boolean(row.active),
       createdAt: new Date(String(row.created_at)).toISOString(),
     })),
@@ -174,4 +176,9 @@ export async function addPayment(employeeId: string, amount: number, paidAt: str
     insert into salary_payments (id, employee_id, amount, paid_at)
     values (${crypto.randomUUID()}, ${employeeId}, ${Math.round(amount)}, ${paidAt})
   `;
+}
+
+function getEmployeeColor(employeeId: string): string {
+  const hash = [...employeeId].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return EMPLOYEE_COLORS[hash % EMPLOYEE_COLORS.length];
 }

@@ -27,7 +27,6 @@ import {
   calculateSalary,
   calculateTotalDue,
   formatMoney,
-  getShiftCountByDate,
   hasShift,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
@@ -65,7 +64,7 @@ const colors = {
   dangerText: '#ffc7cd',
 };
 
-type DialogName = 'employee' | 'location' | 'payment' | null;
+type DialogName = 'employees' | 'location' | 'payment' | null;
 
 export default function AppRoot() {
   const [state, setState] = useState<AppState>(emptyAppState);
@@ -86,8 +85,13 @@ export default function AppRoot() {
     [state.employees],
   );
   const selectedDayShifts = useMemo(
-    () => state.shifts.filter((shift) => shift.date === selectedDate),
-    [state.shifts, selectedDate],
+    () =>
+      state.shifts.filter(
+        (shift) =>
+          shift.date === selectedDate &&
+          activeEmployees.some((employee) => employee.id === shift.employeeId),
+      ),
+    [activeEmployees, state.shifts, selectedDate],
   );
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
 
@@ -207,10 +211,6 @@ export default function AppRoot() {
 
             <View style={styles.calendarCard}>
               <View style={styles.cardHeader}>
-                <View>
-                  <Text style={styles.cardTitle}>Календарь</Text>
-                  <Text style={styles.muted}>{formatMonthLabel(selectedMonth)}</Text>
-                </View>
                 <MonthStepper month={selectedMonth} onChange={setSelectedMonth} />
               </View>
               <CalendarGrid
@@ -229,9 +229,9 @@ export default function AppRoot() {
                     {selectedDayShifts.length ? `${selectedDayShifts.length} смен(ы)` : 'Смен нет'}
                   </Text>
                 </View>
-                <Pressable style={styles.smallButton} onPress={() => setDialog('employee')} testID="open-add-employee">
+                <Pressable style={styles.smallButton} onPress={() => setDialog('employees')} testID="open-employees">
                   <UserPlus size={18} color="#17121f" />
-                  <Text style={styles.smallButtonText}>Сотрудник</Text>
+                  <Text style={styles.smallButtonText}>Сотрудники</Text>
                 </Pressable>
               </View>
 
@@ -248,30 +248,20 @@ export default function AppRoot() {
                       testID={`toggle-shift-${employee.name}`}
                     >
                       <View>
-                        <Text style={styles.employeeName}>{employee.name}</Text>
+                        <View style={styles.employeeTitleRow}>
+                          <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                          <Text style={styles.employeeName}>{employee.name}</Text>
+                        </View>
                         <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
                       </View>
-                      <View style={styles.shiftActions}>
-                        <Text style={[styles.shiftStatus, active && styles.shiftStatusActive]}>
-                          {active ? 'Отработал' : 'Выходной'}
-                        </Text>
-                        <Pressable
-                          style={styles.deleteButton}
-                          onPress={(event) => {
-                            event.stopPropagation();
-                            void deleteEmployee(employee.id);
-                          }}
-                          hitSlop={8}
-                          testID={`delete-employee-${employee.name}`}
-                        >
-                          <Trash2 size={18} color={colors.dangerText} />
-                        </Pressable>
-                      </View>
+                      <Text style={[styles.shiftStatus, active && styles.shiftStatusActive]}>
+                        {active ? 'На смене' : 'Выходной'}
+                      </Text>
                     </Pressable>
                   );
                 })
               ) : (
-                <EmptyState text="Добавь 2–3 сотрудников, потом отмечай смены прямо в календаре." />
+                <EmptyState text="Добавь сотрудников в отдельном окне, потом назначай смены здесь." />
               )}
             </View>
 
@@ -322,7 +312,32 @@ export default function AppRoot() {
           </Pressable>
         </Dialog>
 
-        <Dialog visible={dialog === 'employee'} title="Новый сотрудник" onClose={() => setDialog(null)}>
+        <Dialog visible={dialog === 'employees'} title="Сотрудники" onClose={() => setDialog(null)}>
+          <View style={styles.employeeManagerList}>
+            {activeEmployees.length ? (
+              activeEmployees.map((employee) => (
+                <View key={employee.id} style={styles.employeeManagerRow}>
+                  <View style={styles.employeeTitleRow}>
+                    <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                    <View>
+                      <Text style={styles.employeeName}>{employee.name}</Text>
+                      <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    style={styles.deleteButton}
+                    onPress={() => void deleteEmployee(employee.id)}
+                    hitSlop={8}
+                    testID={`delete-employee-${employee.name}`}
+                  >
+                    <Trash2 size={18} color={colors.dangerText} />
+                  </Pressable>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.muted}>Пока никого нет.</Text>
+            )}
+          </View>
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
           <Field
             label="Ставка в день, ₽"
@@ -408,17 +423,34 @@ function CalendarGrid({
 
               const date = `${month}-${String(day).padStart(2, '0')}`;
               const selected = selectedDate === date;
-              const count = getShiftCountByDate(state, date);
+              const employeesOnShift = getShiftEmployeesByDate(state, date);
 
               return (
                 <Pressable
                   key={date}
-                  style={[styles.dayCell, selected && styles.dayCellSelected, count > 0 && styles.dayCellFilled]}
+                  style={[
+                    styles.dayCell,
+                    selected && styles.dayCellSelected,
+                    employeesOnShift.length > 0 && styles.dayCellFilled,
+                  ]}
                   onPress={() => onSelect(date)}
                   testID={`day-${day}`}
                 >
                   <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{day}</Text>
-                  {count > 0 ? <Text style={[styles.dayCount, selected && styles.dayTextSelected]}>{count}</Text> : null}
+                  {employeesOnShift.length > 0 ? (
+                    <View style={styles.dayDots}>
+                      {employeesOnShift.slice(0, 3).map((employee) => (
+                        <View
+                          key={employee.id}
+                          style={[
+                            styles.dayDot,
+                            { backgroundColor: employee.color },
+                            selected && styles.dayDotSelected,
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -427,6 +459,15 @@ function CalendarGrid({
       </View>
     </View>
   );
+}
+
+function getShiftEmployeesByDate(state: AppState, date: string): Employee[] {
+  const activeEmployees = state.employees.filter((employee) => employee.active);
+  const employeeIds = new Set(
+    state.shifts.filter((shift) => shift.date === date).map((shift) => shift.employeeId),
+  );
+
+  return activeEmployees.filter((employee) => employeeIds.has(employee.id));
 }
 
 function SalaryCard({
@@ -688,9 +729,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   monthStepper: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    gap: 12,
   },
   roundButton: {
     width: 34,
@@ -703,10 +746,11 @@ const styles = StyleSheet.create({
   monthText: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 12,
-    minWidth: 72,
+    fontSize: 24,
+    lineHeight: 29,
+    flex: 1,
     textAlign: 'center',
-    fontWeight: '800',
+    fontWeight: '900',
   },
   calendar: {
     gap: 8,
@@ -738,6 +782,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
   },
   dayCellFilled: {
     backgroundColor: '#20291f',
@@ -756,12 +801,20 @@ const styles = StyleSheet.create({
   dayTextSelected: {
     color: colors.accentText,
   },
-  dayCount: {
-    fontFamily: appFont,
-    color: colors.accent,
-    fontSize: 10,
-    fontWeight: '800',
-    marginTop: 1,
+  dayDots: {
+    minHeight: 8,
+    flexDirection: 'row',
+    gap: 3,
+  },
+  dayDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.panelSoft,
+  },
+  dayDotSelected: {
+    borderColor: colors.accentText,
   },
   section: {
     gap: 10,
@@ -815,6 +868,32 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '800',
+  },
+  employeeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  employeeDot: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+  },
+  employeeManagerList: {
+    gap: 8,
+  },
+  employeeManagerRow: {
+    minHeight: 58,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   shiftActions: {
     flexDirection: 'row',

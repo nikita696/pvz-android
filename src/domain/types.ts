@@ -7,6 +7,7 @@ export interface Employee {
   id: string;
   name: string;
   dailyRate: number;
+  color: string;
   active: boolean;
   createdAt: string;
 }
