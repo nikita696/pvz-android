@@ -66,6 +66,15 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
       };
     }
 
+    if (action.action === 'deleteEmployee') {
+      serverState = {
+        ...serverState,
+        employees: serverState.employees.filter(
+          (employee) => employee.id !== action.employeeId || employee.active,
+        ),
+      };
+    }
+
     if (action.action === 'updateLocation') {
       serverState = {
         ...serverState,
@@ -92,6 +101,10 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
   await expect(page.getByText(UPDATED_LOCATION)).toBeVisible();
 
+  await page.getByTestId('day-31').click();
+  await expect(page.getByTestId(`assign-employee-${ANNA}`)).toBeVisible();
+  await page.getByText('\u041e\u0442\u043c\u0435\u043d\u0430').click();
+
   await page.getByTestId('open-employees').click();
   await page.getByTestId('employee-name').fill(IRA);
   await page.getByTestId('employee-rate').fill('3000');
@@ -101,7 +114,9 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText(`5 000 ${RUBLE}`).first()).toBeVisible();
 
   await page.getByTestId('open-employees').click();
-  await page.getByTestId(`delete-employee-${IRA}`).click();
+  await page.getByTestId(`archive-employee-${IRA}`).click();
+  await page.getByTestId(`delete-archived-employee-${IRA}`).click();
+  await page.getByTestId('confirm-delete-employee').click();
 
   await expect(page.getByText(IRA)).toHaveCount(0);
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();

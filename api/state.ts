@@ -5,6 +5,7 @@ import {
   addEmployee,
   addPayment,
   archiveEmployee,
+  deleteArchivedEmployee,
   getState,
   toggleShift,
   updateLocationName,
@@ -82,6 +83,15 @@ async function applyAction(body: ApiAction) {
     }
 
     await archiveEmployee(body.employeeId);
+    return;
+  }
+
+  if (body.action === 'deleteEmployee') {
+    if (!body.employeeId) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await deleteArchivedEmployee(body.employeeId);
     return;
   }
 

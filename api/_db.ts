@@ -144,6 +144,16 @@ export async function archiveEmployee(employeeId: string) {
   `;
 }
 
+export async function deleteArchivedEmployee(employeeId: string) {
+  const sql = getSql();
+  await ensureSchema();
+  await sql`
+    delete from employees
+    where id = ${employeeId}
+      and active = false
+  `;
+}
+
 export async function toggleShift(employeeId: string, date: string) {
   const sql = getSql();
   await ensureSchema();

@@ -46,4 +46,5 @@ export type ApiAction =
   | { action: 'addEmployee'; name: string; dailyRate: number }
   | { action: 'toggleShift'; employeeId: string; date: string }
   | { action: 'addPayment'; employeeId: string; amount: number; paidAt: string }
-  | { action: 'archiveEmployee'; employeeId: string };
+  | { action: 'archiveEmployee'; employeeId: string }
+  | { action: 'deleteEmployee'; employeeId: string };

@@ -1,5 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import {
+  Archive,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -64,7 +65,7 @@ const colors = {
   dangerText: '#ffc7cd',
 };
 
-type DialogName = 'employees' | 'location' | 'payment' | null;
+type DialogName = 'assign' | 'deleteEmployee' | 'employees' | 'location' | 'payment' | null;
 
 export default function AppRoot() {
   const [state, setState] = useState<AppState>(emptyAppState);
@@ -73,6 +74,7 @@ export default function AppRoot() {
   const [dialog, setDialog] = useState<DialogName>(null);
   const [locationName, setLocationName] = useState('');
   const [employeeName, setEmployeeName] = useState('');
+  const [employeeToDeleteId, setEmployeeToDeleteId] = useState('');
   const [dailyRate, setDailyRate] = useState('2500');
   const [paymentEmployeeId, setPaymentEmployeeId] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -84,6 +86,10 @@ export default function AppRoot() {
     () => state.employees.filter((employee) => employee.active),
     [state.employees],
   );
+  const archivedEmployees = useMemo(
+    () => state.employees.filter((employee) => !employee.active),
+    [state.employees],
+  );
   const selectedDayShifts = useMemo(
     () =>
       state.shifts.filter(
@@ -92,6 +98,10 @@ export default function AppRoot() {
           activeEmployees.some((employee) => employee.id === shift.employeeId),
       ),
     [activeEmployees, state.shifts, selectedDate],
+  );
+  const selectedShiftEmployees = useMemo(
+    () => activeEmployees.filter((employee) => hasShift(state, employee.id, selectedDate)),
+    [activeEmployees, selectedDate, state],
   );
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
 
@@ -169,8 +179,28 @@ export default function AppRoot() {
     setDialog(null);
   }
 
-  async function deleteEmployee(employeeId: string) {
+  function openAssignment(date: string) {
+    setSelectedDate(date);
+    setDialog('assign');
+  }
+
+  async function archiveEmployee(employeeId: string) {
     await mutate({ action: 'archiveEmployee', employeeId });
+  }
+
+  function openDeleteEmployeeDialog(employeeId: string) {
+    setEmployeeToDeleteId(employeeId);
+    setDialog('deleteEmployee');
+  }
+
+  async function deleteArchivedEmployee() {
+    if (!employeeToDeleteId) {
+      return;
+    }
+
+    await mutate({ action: 'deleteEmployee', employeeId: employeeToDeleteId });
+    setEmployeeToDeleteId('');
+    setDialog('employees');
   }
 
   const selectedDateLabel = formatDate(selectedDate);
@@ -217,7 +247,7 @@ export default function AppRoot() {
                 month={selectedMonth}
                 selectedDate={selectedDate}
                 state={state}
-                onSelect={setSelectedDate}
+                onSelect={openAssignment}
               />
             </View>
 
@@ -236,17 +266,9 @@ export default function AppRoot() {
               </View>
 
               {activeEmployees.length ? (
-                activeEmployees.map((employee) => {
-                  const active = hasShift(state, employee.id, selectedDate);
-                  return (
-                    <Pressable
-                      key={employee.id}
-                      style={[styles.employeeShiftRow, active && styles.employeeShiftRowActive]}
-                      onPress={() =>
-                        mutate({ action: 'toggleShift', employeeId: employee.id, date: selectedDate })
-                      }
-                      testID={`toggle-shift-${employee.name}`}
-                    >
+                selectedShiftEmployees.length ? (
+                  selectedShiftEmployees.map((employee) => (
+                    <View key={employee.id} style={[styles.employeeShiftRow, styles.employeeShiftRowActive]}>
                       <View>
                         <View style={styles.employeeTitleRow}>
                           <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
@@ -254,12 +276,12 @@ export default function AppRoot() {
                         </View>
                         <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
                       </View>
-                      <Text style={[styles.shiftStatus, active && styles.shiftStatusActive]}>
-                        {active ? 'На смене' : 'Выходной'}
-                      </Text>
-                    </Pressable>
-                  );
-                })
+                      <Text style={[styles.shiftStatus, styles.shiftStatusActive]}>На смене</Text>
+                    </View>
+                  ))
+                ) : (
+                  <EmptyState text="В этот день никого нет на смене." />
+                )
               ) : (
                 <EmptyState text="Добавь сотрудников в отдельном окне, потом назначай смены здесь." />
               )}
@@ -305,6 +327,37 @@ export default function AppRoot() {
           </View>
         ) : null}
 
+        <Dialog visible={dialog === 'assign'} title={selectedDateLabel} onClose={() => setDialog(null)}>
+          <View style={styles.assignmentList}>
+            {activeEmployees.length ? (
+              activeEmployees.map((employee) => {
+                const active = hasShift(state, employee.id, selectedDate);
+
+                return (
+                  <Pressable
+                    key={employee.id}
+                    style={[styles.assignmentRow, active && styles.assignmentRowActive]}
+                    onPress={() =>
+                      mutate({ action: 'toggleShift', employeeId: employee.id, date: selectedDate })
+                    }
+                    testID={`assign-employee-${employee.name}`}
+                  >
+                    <View style={styles.employeeTitleRow}>
+                      <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                      <Text style={styles.employeeName}>{employee.name}</Text>
+                    </View>
+                    <Text style={[styles.shiftStatus, active && styles.shiftStatusActive]}>
+                      {active ? 'На смене' : 'Добавить'}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            ) : (
+              <Text style={styles.muted}>Сначала добавь сотрудника.</Text>
+            )}
+          </View>
+        </Dialog>
+
         <Dialog visible={dialog === 'location'} title="Название ПВЗ" onClose={() => setDialog(null)}>
           <Field label="Название" value={locationName} onChangeText={setLocationName} testID="location-name" />
           <Pressable style={styles.primaryButton} onPress={saveLocationName} testID="save-location">
@@ -325,12 +378,13 @@ export default function AppRoot() {
                     </View>
                   </View>
                   <Pressable
-                    style={styles.deleteButton}
-                    onPress={() => void deleteEmployee(employee.id)}
+                    style={styles.archiveButton}
+                    onPress={() => void archiveEmployee(employee.id)}
                     hitSlop={8}
-                    testID={`delete-employee-${employee.name}`}
+                    testID={`archive-employee-${employee.name}`}
                   >
-                    <Trash2 size={18} color={colors.dangerText} />
+                    <Archive size={16} color={colors.accentText} />
+                    <Text style={styles.archiveButtonText}>В архив</Text>
                   </Pressable>
                 </View>
               ))
@@ -338,6 +392,31 @@ export default function AppRoot() {
               <Text style={styles.muted}>Пока никого нет.</Text>
             )}
           </View>
+          {archivedEmployees.length ? (
+            <View style={styles.archiveSection}>
+              <Text style={styles.fieldLabel}>Архив</Text>
+              {archivedEmployees.map((employee) => (
+                <View key={employee.id} style={styles.employeeManagerRow}>
+                  <View style={styles.employeeTitleRow}>
+                    <View style={[styles.employeeDot, styles.employeeDotMuted]} />
+                    <View>
+                      <Text style={styles.employeeName}>{employee.name}</Text>
+                      <Text style={styles.muted}>Архивирован</Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    style={styles.deleteTextButton}
+                    onPress={() => openDeleteEmployeeDialog(employee.id)}
+                    hitSlop={8}
+                    testID={`delete-archived-employee-${employee.name}`}
+                  >
+                    <Trash2 size={16} color={colors.dangerText} />
+                    <Text style={styles.deleteTextButtonText}>Удалить</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
           <Field
             label="Ставка в день, ₽"
@@ -348,6 +427,22 @@ export default function AppRoot() {
           />
           <Pressable style={styles.primaryButton} onPress={addEmployee} testID="save-employee">
             <Text style={styles.primaryButtonText}>Добавить</Text>
+          </Pressable>
+        </Dialog>
+
+        <Dialog
+          visible={dialog === 'deleteEmployee'}
+          title="Удалить из базы?"
+          onClose={() => {
+            setEmployeeToDeleteId('');
+            setDialog('employees');
+          }}
+        >
+          <Text style={styles.warningText}>
+            Сотрудник уже в архиве. Следующий шаг удалит его из базы вместе со сменами и выплатами.
+          </Text>
+          <Pressable style={styles.dangerButton} onPress={deleteArchivedEmployee} testID="confirm-delete-employee">
+            <Text style={styles.dangerButtonText}>Удалить навсегда</Text>
           </Pressable>
         </Dialog>
 
@@ -879,7 +974,36 @@ const styles = StyleSheet.create({
     height: 11,
     borderRadius: 6,
   },
+  employeeDotMuted: {
+    backgroundColor: colors.muted,
+  },
+  assignmentList: {
+    gap: 8,
+  },
+  assignmentRow: {
+    minHeight: 50,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  assignmentRowActive: {
+    backgroundColor: '#20291f',
+    borderColor: colors.accent,
+  },
   employeeManagerList: {
+    gap: 8,
+  },
+  archiveSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
     gap: 8,
   },
   employeeManagerRow: {
@@ -895,10 +1019,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  shiftActions: {
+  archiveButton: {
+    minHeight: 34,
+    borderRadius: 17,
+    paddingHorizontal: 10,
+    backgroundColor: colors.accent,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  archiveButtonText: {
+    fontFamily: appFont,
+    color: colors.accentText,
+    fontSize: 11,
+    fontWeight: '900',
   },
   shiftStatus: {
     fontFamily: appFont,
@@ -918,6 +1053,45 @@ const styles = StyleSheet.create({
     borderColor: colors.dangerBorder,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  deleteTextButton: {
+    minHeight: 34,
+    borderRadius: 17,
+    paddingHorizontal: 10,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  deleteTextButtonText: {
+    fontFamily: appFont,
+    color: colors.dangerText,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  warningText: {
+    fontFamily: appFont,
+    color: colors.dangerText,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  dangerButton: {
+    minHeight: 50,
+    borderRadius: 25,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dangerButtonText: {
+    fontFamily: appFont,
+    color: colors.dangerText,
+    fontSize: 14,
+    fontWeight: '900',
   },
   totalCard: {
     borderRadius: 8,
