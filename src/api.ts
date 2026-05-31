@@ -40,6 +40,10 @@ export async function sendAction(action: ApiAction): Promise<AppState> {
 async function getApiError(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as { error?: string; message?: string };
+    if (payload.error === 'DATABASE_URL_MISSING') {
+      return 'Neon ещё не подключён. Добавь DATABASE_URL в Vercel, и данные начнут сохраняться.';
+    }
+
     return payload.message ?? payload.error ?? `HTTP_${response.status}`;
   } catch {
     return `HTTP_${response.status}`;

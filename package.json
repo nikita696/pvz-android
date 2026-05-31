@@ -22,7 +22,6 @@
     "@vercel/node": "^5.8.8",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
-    "serve": "^14.2.6",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.60.0",
     "vitest": "^4.1.7"
@@ -35,7 +34,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
     "build": "expo export --platform web --output-dir dist",
-    "web:e2e": "npm run build && serve -s dist -l 8091",
+    "web:e2e": "npm run build && node scripts/e2e-server.mjs",
     "lint": "eslint .",
     "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
