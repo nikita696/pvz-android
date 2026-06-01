@@ -82,7 +82,7 @@ const colors = {
   accentText: '#102017',
   weekendBg: '#fff7f8',
   weekendBorder: '#f3d7de',
-  weekendText: '#b42345',
+  weekendText: '#b45309',
   holidayText: '#c2410c',
   dangerBg: '#fff1f3',
   dangerBorder: '#efbdc7',
