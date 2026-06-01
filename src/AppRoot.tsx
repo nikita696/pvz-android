@@ -120,6 +120,7 @@ export default function AppRoot() {
     () => activeEmployees.filter((employee) => hasShift(state, employee.id, selectedDate)),
     [activeEmployees, selectedDate, state],
   );
+  const selectedDayOff = useMemo(() => getDayOffInfo(selectedDate), [selectedDate]);
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
 
   useEffect(() => {
@@ -350,6 +351,11 @@ export default function AppRoot() {
         ) : null}
 
         <Dialog visible={dialog === 'assign'} title={selectedDateLabel} onClose={() => setDialog(null)}>
+          {selectedDayOff ? (
+            <View style={styles.assignmentDayOffNote}>
+              <Text style={styles.assignmentDayOffText}>{selectedDayOff.label}</Text>
+            </View>
+          ) : null}
           <View style={styles.assignmentList}>
             {activeEmployees.length ? (
               activeEmployees.map((employee) => {
@@ -547,9 +553,9 @@ function CalendarGrid({
                   key={date}
                   style={[
                     styles.dayCell,
-                    employeesOnShift.length > 0 && styles.dayCellFilled,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
+                    employeesOnShift.length > 0 && styles.dayCellFilled,
                     selected && styles.dayCellSelected,
                   ]}
                   onPress={() => onSelect(date)}
@@ -942,16 +948,16 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   dayCellOff: {
-    backgroundColor: '#21181c',
-    borderColor: '#3e2a32',
+    backgroundColor: '#1a1417',
+    borderColor: '#302127',
   },
   dayCellHoliday: {
-    backgroundColor: '#281b21',
-    borderColor: '#513440',
+    backgroundColor: '#1f1519',
+    borderColor: '#3a2630',
   },
   dayCellFilled: {
-    backgroundColor: '#20291f',
-    borderColor: colors.borderStrong,
+    borderWidth: 2,
+    borderColor: '#9fd2ad',
   },
   dayCellSelected: {
     borderWidth: 2,
@@ -1070,6 +1076,21 @@ const styles = StyleSheet.create({
   },
   assignmentList: {
     gap: 8,
+  },
+  assignmentDayOffNote: {
+    borderRadius: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    backgroundColor: '#1f1519',
+    borderWidth: 1,
+    borderColor: '#3a2630',
+  },
+  assignmentDayOffText: {
+    fontFamily: appFont,
+    color: '#f2cdd8',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
   },
   assignmentRow: {
     minHeight: 50,
