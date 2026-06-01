@@ -82,7 +82,7 @@ const colors = {
   accentText: '#102017',
   weekendBg: '#fff7f8',
   weekendBorder: '#f3d7de',
-  weekendText: '#b45309',
+  weekendText: '#dc2626',
   holidayText: '#c2410c',
   dangerBg: '#fff1f3',
   dangerBorder: '#efbdc7',
@@ -903,8 +903,8 @@ function CalendarGrid({
   return (
     <View style={styles.calendar}>
       <View style={styles.weekRow}>
-        {WEEKDAYS.map((day) => (
-          <Text key={day} style={styles.weekday}>
+        {WEEKDAYS.map((day, dayIndex) => (
+          <Text key={day} style={[styles.weekday, dayIndex >= 5 && styles.weekdayWeekend]}>
             {day}
           </Text>
         ))}
@@ -1515,6 +1515,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 11,
     fontWeight: '700',
+  },
+  weekdayWeekend: {
+    color: colors.weekendText,
   },
   weeks: {
     gap: 6,
