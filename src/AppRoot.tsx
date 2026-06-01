@@ -404,16 +404,35 @@ export default function AppRoot() {
               onPress={openLocationDialog}
               testID="open-location-editor"
             >
-              <Text style={styles.locationName}>{state.location.name}</Text>
+              <Text style={styles.locationName} numberOfLines={1} ellipsizeMode="tail">
+                {state.location.name}
+              </Text>
               <View style={styles.editBadge}>
                 <PencilLine size={14} color={colors.accentText} />
               </View>
             </Pressable>
             <Text style={styles.subtitle}>Удобный трекер смен и выплат</Text>
           </View>
-          <Pressable style={styles.iconButton} onPress={loadState} testID="refresh">
-            <RefreshCw size={20} color={colors.accentText} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Сотрудники"
+              style={styles.iconButton}
+              onPress={() => setDialog('employees')}
+              testID="open-employees"
+            >
+              <UserPlus size={21} color={colors.accentText} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Обновить данные"
+              style={styles.iconButton}
+              onPress={loadState}
+              testID="refresh"
+            >
+              <RefreshCw size={20} color={colors.accentText} />
+            </Pressable>
+          </View>
         </View>
 
         {loading ? (
@@ -445,10 +464,6 @@ export default function AppRoot() {
                     {selectedDayShifts.length ? `${selectedDayShifts.length} смен(ы)` : 'Смен нет'}
                   </Text>
                 </View>
-                <Pressable style={styles.smallButton} onPress={() => setDialog('employees')} testID="open-employees">
-                  <UserPlus size={18} color={colors.accentText} />
-                  <Text style={styles.smallButtonText}>Сотрудники</Text>
-                </Pressable>
               </View>
 
               {activeEmployees.length ? (
@@ -1368,7 +1383,7 @@ const styles = StyleSheet.create({
     maxWidth: 620,
   },
   header: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingTop: 10,
     paddingBottom: 16,
     flexDirection: 'row',
@@ -1380,27 +1395,33 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
   locationButton: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   locationName: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 26,
-    lineHeight: 32,
+    fontSize: 24,
+    lineHeight: 29,
     fontWeight: '900',
     flexShrink: 1,
     textDecorationLine: 'underline',
     textDecorationColor: colors.borderStrong,
   },
   editBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1413,9 +1434,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   iconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
