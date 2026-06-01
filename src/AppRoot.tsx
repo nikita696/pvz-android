@@ -48,6 +48,22 @@ const MONTH_NAMES = [
   'декабрь',
 ];
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const HOLIDAYS: Record<string, string> = {
+  '01-01': 'Новогодние каникулы',
+  '01-02': 'Новогодние каникулы',
+  '01-03': 'Новогодние каникулы',
+  '01-04': 'Новогодние каникулы',
+  '01-05': 'Новогодние каникулы',
+  '01-06': 'Новогодние каникулы',
+  '01-07': 'Рождество Христово',
+  '01-08': 'Новогодние каникулы',
+  '02-23': 'День защитника Отечества',
+  '03-08': 'Международный женский день',
+  '05-01': 'Праздник Весны и Труда',
+  '05-09': 'День Победы',
+  '06-12': 'День России',
+  '11-04': 'День народного единства',
+};
 const appFont = 'Arial';
 const colors = {
   background: '#0f1110',
@@ -66,6 +82,7 @@ const colors = {
 };
 
 type DialogName = 'assign' | 'deleteEmployee' | 'employees' | 'location' | 'payment' | null;
+type DayOffInfo = { label: string; holiday: boolean } | null;
 
 export default function AppRoot() {
   const [state, setState] = useState<AppState>(emptyAppState);
@@ -498,6 +515,7 @@ function CalendarGrid({
 }) {
   const days = getCalendarDays(month);
   const weeks = chunkWeeks(days);
+  const [hoveredDayOff, setHoveredDayOff] = useState<{ date: string; label: string } | null>(null);
 
   return (
     <View style={styles.calendar}>
@@ -519,31 +537,47 @@ function CalendarGrid({
               const date = `${month}-${String(day).padStart(2, '0')}`;
               const selected = selectedDate === date;
               const employeesOnShift = getShiftEmployeesByDate(state, date);
+              const dayOff = getDayOffInfo(date);
 
               return (
                 <Pressable
                   key={date}
                   style={[
                     styles.dayCell,
-                    selected && styles.dayCellSelected,
+                    dayOff && styles.dayCellOff,
+                    dayOff?.holiday && styles.dayCellHoliday,
                     employeesOnShift.length > 0 && styles.dayCellFilled,
+                    selected && styles.dayCellSelected,
                   ]}
                   onPress={() => onSelect(date)}
+                  onHoverIn={() => {
+                    if (dayOff) {
+                      setHoveredDayOff({ date, label: dayOff.label });
+                    }
+                  }}
+                  onHoverOut={() => setHoveredDayOff(null)}
                   testID={`day-${day}`}
                 >
                   <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{day}</Text>
                   {employeesOnShift.length > 0 ? (
-                    <View style={styles.dayDots}>
+                    <View style={styles.dayNames}>
                       {employeesOnShift.slice(0, 3).map((employee) => (
-                        <View
+                        <Text
                           key={employee.id}
-                          style={[
-                            styles.dayDot,
-                            { backgroundColor: employee.color },
-                            selected && styles.dayDotSelected,
-                          ]}
-                        />
+                          style={[styles.dayName, { color: employee.color }]}
+                          numberOfLines={1}
+                          ellipsizeMode="clip"
+                        >
+                          {shortEmployeeName(employee.name)}
+                        </Text>
                       ))}
+                    </View>
+                  ) : null}
+                  {hoveredDayOff?.date === date ? (
+                    <View style={styles.dayTooltip} pointerEvents="none">
+                      <Text style={styles.dayTooltipText} numberOfLines={2}>
+                        {hoveredDayOff.label}
+                      </Text>
                     </View>
                   ) : null}
                 </Pressable>
@@ -554,6 +588,28 @@ function CalendarGrid({
       </View>
     </View>
   );
+}
+
+function shortEmployeeName(name: string): string {
+  return [...name.trim()].slice(0, 3).join('');
+}
+
+function getDayOffInfo(date: string): DayOffInfo {
+  const [, month, day] = date.split('-');
+  const holidayName = HOLIDAYS[`${month}-${day}`];
+
+  if (holidayName) {
+    return { label: holidayName, holiday: true };
+  }
+
+  const [yearNumber, monthNumber, dayNumber] = date.split('-').map(Number);
+  const weekday = new Date(yearNumber, monthNumber - 1, dayNumber).getDay();
+
+  if (weekday === 0 || weekday === 6) {
+    return { label: 'Выходной день', holiday: false };
+  }
+
+  return null;
 }
 
 function getShiftEmployeesByDate(state: AppState, date: string): Employee[] {
@@ -876,16 +932,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
+    justifyContent: 'flex-start',
+    gap: 2,
+    paddingHorizontal: 2,
+    paddingTop: 5,
+    position: 'relative',
+  },
+  dayCellOff: {
+    backgroundColor: '#21181c',
+    borderColor: '#3e2a32',
+  },
+  dayCellHoliday: {
+    backgroundColor: '#281b21',
+    borderColor: '#513440',
   },
   dayCellFilled: {
     backgroundColor: '#20291f',
     borderColor: colors.borderStrong,
   },
   dayCellSelected: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    borderWidth: 2,
+    borderColor: colors.accentWarm,
   },
   dayText: {
     fontFamily: appFont,
@@ -894,22 +961,43 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   dayTextSelected: {
-    color: colors.accentText,
+    color: colors.text,
   },
-  dayDots: {
-    minHeight: 8,
-    flexDirection: 'row',
-    gap: 3,
+  dayNames: {
+    width: '100%',
+    maxHeight: 28,
+    alignItems: 'center',
+    overflow: 'hidden',
+    gap: 1,
   },
-  dayDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+  dayName: {
+    fontFamily: appFont,
+    fontSize: 8,
+    lineHeight: 9,
+    fontWeight: '900',
+    maxWidth: '100%',
+    textAlign: 'center',
+  },
+  dayTooltip: {
+    position: 'absolute',
+    left: -22,
+    right: -22,
+    bottom: 42,
+    zIndex: 20,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: '#24261f',
     borderWidth: 1,
-    borderColor: colors.panelSoft,
+    borderColor: colors.borderStrong,
   },
-  dayDotSelected: {
-    borderColor: colors.accentText,
+  dayTooltipText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: 'center',
+    fontWeight: '800',
   },
   section: {
     gap: 10,
