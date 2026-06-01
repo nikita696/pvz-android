@@ -26,8 +26,14 @@ export function calculateSalary(state: AppState, employee: Employee, month: stri
   const workedShifts = state.shifts.filter(
     (shift) => shift.employeeId === employee.id && isInMonth(shift.date, month),
   ).length;
-  const paid = state.payments
-    .filter((payment) => payment.employeeId === employee.id && isInMonth(payment.paidAt, month))
+  const monthPayments = state.payments.filter(
+    (payment) => payment.employeeId === employee.id && isInMonth(payment.paidAt, month),
+  );
+  const paid = monthPayments
+    .filter((payment) => payment.kind !== 'deduction')
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  const deductions = monthPayments
+    .filter((payment) => payment.kind === 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
   const accrued = workedShifts * employee.dailyRate;
 
@@ -37,7 +43,8 @@ export function calculateSalary(state: AppState, employee: Employee, month: stri
     dailyRate: employee.dailyRate,
     accrued,
     paid,
-    due: Math.max(0, accrued - paid),
+    deductions,
+    due: Math.max(0, accrued - paid - deductions),
   };
 }
 

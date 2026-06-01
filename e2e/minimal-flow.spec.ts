@@ -7,8 +7,26 @@ const UPDATED_LOCATION = '\u041f\u0412\u0417 \u043d\u0430 \u041b\u0435\u0441\u04
 const ANNA = '\u0410\u043d\u043d\u0430';
 const IRA = '\u0418\u0440\u0430';
 const RUBLE = '\u20bd';
+const VISIBLE_DATE = '2026-05-31';
 
 test('minimal schedule and salary flow renders', async ({ page }) => {
+  await page.addInitScript((visibleDate) => {
+    const fixedNow = `${visibleDate}T12:00:00.000Z`;
+    const RealDate = Date;
+
+    class MockDate extends RealDate {
+      constructor(...args: ConstructorParameters<typeof Date>) {
+        super(...(args.length ? args : [fixedNow]));
+      }
+
+      static now() {
+        return new RealDate(fixedNow).getTime();
+      }
+    }
+
+    window.Date = MockDate as DateConstructor;
+  }, VISIBLE_DATE);
+
   let serverState: AppState = {
     location: { id: 'main', name: LOCATION },
     employees: [
@@ -21,8 +39,17 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         createdAt: '2026-05-01T00:00:00.000Z',
       },
     ],
-    shifts: [{ id: 'shift-1', employeeId: 'emp-1', date: '2026-05-31' }],
-    payments: [{ id: 'pay-1', employeeId: 'emp-1', amount: 500, paidAt: '2026-05-31' }],
+    shifts: [{ id: 'shift-1', employeeId: 'emp-1', date: VISIBLE_DATE }],
+    payments: [
+      {
+        id: 'pay-1',
+        employeeId: 'emp-1',
+        amount: 500,
+        paidAt: VISIBLE_DATE,
+        kind: 'payment',
+        comment: '\u0430\u0432\u0430\u043d\u0441',
+      },
+    ],
   };
 
   await page.route('**/api/state', async (route) => {
@@ -53,7 +80,24 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
             createdAt: '2026-05-31T00:00:00.000Z',
           },
         ],
-        shifts: [...serverState.shifts, { id: 'shift-2', employeeId: 'emp-2', date: '2026-05-31' }],
+        shifts: [...serverState.shifts, { id: 'shift-2', employeeId: 'emp-2', date: VISIBLE_DATE }],
+      };
+    }
+
+    if (action.action === 'addPayment') {
+      serverState = {
+        ...serverState,
+        payments: [
+          ...serverState.payments,
+          {
+            id: 'pay-new',
+            employeeId: action.employeeId,
+            amount: action.amount,
+            paidAt: action.paidAt,
+            kind: action.kind ?? 'payment',
+            comment: action.comment ?? '',
+          },
+        ],
       };
     }
 
@@ -101,9 +145,18 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
   await expect(page.getByText(UPDATED_LOCATION)).toBeVisible();
 
+  await page.getByTestId('open-payment').click();
+  await page.getByTestId('payment-kind-deduction').click();
+  await page.getByTestId('payment-amount').fill('300');
+  await page.getByTestId('payment-comment').fill('\u0448\u0442\u0440\u0430\u0444');
+  await page.getByTestId('save-payment').click();
+
+  await expect(page.getByText(`1 700 ${RUBLE}`).first()).toBeVisible();
+  await expect(page.getByText(`\u0423\u0434\u0435\u0440\u0436\u0430\u043d\u043e 300 ${RUBLE}`)).toBeVisible();
+
   await page.getByTestId('day-31').click();
   await expect(page.getByTestId(`assign-employee-${ANNA}`)).toBeVisible();
-  await page.getByText('\u041e\u0442\u043c\u0435\u043d\u0430').click();
+  await page.getByTestId('close-assignment').click();
 
   await page.getByTestId('open-employees').click();
   await page.getByTestId('employee-name').fill(IRA);
@@ -111,7 +164,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('save-employee').click();
 
   await expect(page.getByText(IRA).first()).toBeVisible();
-  await expect(page.getByText(`5 000 ${RUBLE}`).first()).toBeVisible();
+  await expect(page.getByText(`4 700 ${RUBLE}`).first()).toBeVisible();
 
   await page.getByTestId('open-employees').click();
   await page.getByTestId(`archive-employee-${IRA}`).click();
@@ -119,5 +172,5 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('confirm-delete-employee').click();
 
   await expect(page.getByText(IRA)).toHaveCount(0);
-  await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
+  await expect(page.getByText(`1 700 ${RUBLE}`).first()).toBeVisible();
 });

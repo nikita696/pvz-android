@@ -18,11 +18,15 @@ export interface Shift {
   date: string;
 }
 
+export type PaymentKind = 'payment' | 'deduction';
+
 export interface SalaryPayment {
   id: string;
   employeeId: string;
   amount: number;
   paidAt: string;
+  kind: PaymentKind;
+  comment: string;
 }
 
 export interface AppState {
@@ -38,6 +42,7 @@ export interface SalarySummary {
   dailyRate: number;
   accrued: number;
   paid: number;
+  deductions: number;
   due: number;
 }
 
@@ -45,6 +50,13 @@ export type ApiAction =
   | { action: 'updateLocation'; name: string }
   | { action: 'addEmployee'; name: string; dailyRate: number }
   | { action: 'toggleShift'; employeeId: string; date: string }
-  | { action: 'addPayment'; employeeId: string; amount: number; paidAt: string }
+  | {
+      action: 'addPayment';
+      employeeId: string;
+      amount: number;
+      paidAt: string;
+      kind?: PaymentKind;
+      comment?: string;
+    }
   | { action: 'archiveEmployee'; employeeId: string }
   | { action: 'deleteEmployee'; employeeId: string };

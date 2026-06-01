@@ -30,8 +30,30 @@ const state: AppState = {
     { id: 'shift-old', employeeId: 'emp-1', date: '2026-04-30' },
   ],
   payments: [
-    { id: 'pay-1', employeeId: 'emp-1', amount: 1000, paidAt: '2026-05-10' },
-    { id: 'pay-old', employeeId: 'emp-1', amount: 9999, paidAt: '2026-04-10' },
+    {
+      id: 'pay-1',
+      employeeId: 'emp-1',
+      amount: 1000,
+      paidAt: '2026-05-10',
+      kind: 'payment',
+      comment: 'аванс',
+    },
+    {
+      id: 'deduction-1',
+      employeeId: 'emp-1',
+      amount: 300,
+      paidAt: '2026-05-11',
+      kind: 'deduction',
+      comment: 'штраф',
+    },
+    {
+      id: 'pay-old',
+      employeeId: 'emp-1',
+      amount: 9999,
+      paidAt: '2026-04-10',
+      kind: 'payment',
+      comment: 'старая выплата',
+    },
   ],
 };
 
@@ -43,7 +65,8 @@ describe('minimal payroll formula', () => {
     expect(salary.dailyRate).toBe(2500);
     expect(salary.accrued).toBe(5000);
     expect(salary.paid).toBe(1000);
-    expect(salary.due).toBe(4000);
+    expect(salary.deductions).toBe(300);
+    expect(salary.due).toBe(3700);
   });
 
   it('checks if a shift is already marked', () => {
@@ -52,7 +75,7 @@ describe('minimal payroll formula', () => {
   });
 
   it('sums employee debt for the visible month', () => {
-    expect(calculateTotalDue(state, '2026-05')).toBe(4000);
+    expect(calculateTotalDue(state, '2026-05')).toBe(3700);
   });
 
   it('ignores archived employees in calendar shift counters', () => {

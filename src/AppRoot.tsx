@@ -31,7 +31,7 @@ import {
   hasShift,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
-import type { ApiAction, AppState, Employee } from './domain/types';
+import type { ApiAction, AppState, Employee, PaymentKind } from './domain/types';
 
 const MONTH_NAMES = [
   'январь',
@@ -94,7 +94,9 @@ export default function AppRoot() {
   const [employeeToDeleteId, setEmployeeToDeleteId] = useState('');
   const [dailyRate, setDailyRate] = useState('2500');
   const [paymentEmployeeId, setPaymentEmployeeId] = useState('');
+  const [paymentKind, setPaymentKind] = useState<PaymentKind>('payment');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentComment, setPaymentComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -187,13 +189,22 @@ export default function AppRoot() {
     const employeeId = paymentEmployeeId || activeEmployees[0]?.id;
 
     if (!employeeId || !Number.isFinite(amount) || amount <= 0) {
-      setError('Выбери сотрудника и сумму выплаты.');
+      setError('Выбери сотрудника и сумму.');
       return;
     }
 
-    await mutate({ action: 'addPayment', employeeId, amount, paidAt: selectedDate });
+    await mutate({
+      action: 'addPayment',
+      employeeId,
+      amount,
+      paidAt: selectedDate,
+      kind: paymentKind,
+      comment: paymentComment.trim(),
+    });
     setPaymentAmount('');
+    setPaymentComment('');
     setPaymentEmployeeId('');
+    setPaymentKind('payment');
     setDialog(null);
   }
 
@@ -350,7 +361,12 @@ export default function AppRoot() {
           </View>
         ) : null}
 
-        <Dialog visible={dialog === 'assign'} title={selectedDateLabel} onClose={() => setDialog(null)}>
+        <Dialog
+          visible={dialog === 'assign'}
+          title={selectedDateLabel}
+          closeTestID="close-assignment"
+          onClose={() => setDialog(null)}
+        >
           {selectedDayOff ? (
             <View style={styles.assignmentDayOffNote}>
               <Text style={styles.assignmentDayOffText}>{selectedDayOff.label}</Text>
@@ -495,6 +511,36 @@ export default function AppRoot() {
               </Pressable>
             ))}
           </View>
+          <View style={styles.paymentTypeRow}>
+            <Pressable
+              style={[styles.paymentTypeButton, paymentKind === 'payment' && styles.paymentTypeButtonActive]}
+              onPress={() => setPaymentKind('payment')}
+              testID="payment-kind-payment"
+            >
+              <Text
+                style={[
+                  styles.paymentTypeText,
+                  paymentKind === 'payment' && styles.paymentTypeTextActive,
+                ]}
+              >
+                Выплата
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.paymentTypeButton, paymentKind === 'deduction' && styles.paymentTypeButtonDanger]}
+              onPress={() => setPaymentKind('deduction')}
+              testID="payment-kind-deduction"
+            >
+              <Text
+                style={[
+                  styles.paymentTypeText,
+                  paymentKind === 'deduction' && styles.paymentTypeTextDanger,
+                ]}
+              >
+                Удержание
+              </Text>
+            </Pressable>
+          </View>
           <Field
             label="Сумма, ₽"
             value={paymentAmount}
@@ -502,8 +548,18 @@ export default function AppRoot() {
             keyboardType="numeric"
             testID="payment-amount"
           />
+          <Field
+            label="Комментарий"
+            value={paymentComment}
+            onChangeText={setPaymentComment}
+            placeholder={paymentKind === 'deduction' ? 'штраф, удержание' : 'нал, СБП, аванс, зарплата'}
+            maxLength={80}
+            testID="payment-comment"
+          />
           <Pressable style={styles.primaryButton} onPress={addPayment} testID="save-payment">
-            <Text style={styles.primaryButtonText}>Сохранить выплату</Text>
+            <Text style={styles.primaryButtonText}>
+              {paymentKind === 'deduction' ? 'Сохранить удержание' : 'Сохранить выплату'}
+            </Text>
           </Pressable>
         </Dialog>
       </View>
@@ -643,11 +699,14 @@ function SalaryCard({
 
   return (
     <View style={styles.salaryCard}>
-      <View>
+      <View style={styles.salaryCardInfo}>
         <Text style={styles.employeeName}>{employee.name}</Text>
         <Text style={styles.muted}>
-          {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − {formatMoney(salary.paid)}
+          {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − выпл. {formatMoney(salary.paid)}
         </Text>
+        {salary.deductions > 0 ? (
+          <Text style={styles.deductionLine}>Удержано {formatMoney(salary.deductions)}</Text>
+        ) : null}
       </View>
       <View style={styles.salaryDue}>
         <Text style={styles.miniLabel}>К выплате</Text>
@@ -675,11 +734,13 @@ function Dialog({
   visible,
   title,
   children,
+  closeTestID,
   onClose,
 }: {
   visible: boolean;
   title: string;
   children: React.ReactNode;
+  closeTestID?: string;
   onClose: () => void;
 }) {
   return (
@@ -688,7 +749,7 @@ function Dialog({
         <View style={styles.dialog}>
           <View style={styles.dialogHeader}>
             <Text style={styles.dialogTitle}>{title}</Text>
-            <Pressable onPress={onClose}>
+            <Pressable onPress={onClose} testID={closeTestID ?? 'dialog-close'}>
               <Text style={styles.cancelText}>Отмена</Text>
             </Pressable>
           </View>
@@ -704,12 +765,16 @@ function Field({
   value,
   onChangeText,
   keyboardType,
+  placeholder,
+  maxLength,
   testID,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   keyboardType?: 'default' | 'numeric';
+  placeholder?: string;
+  maxLength?: number;
   testID?: string;
 }) {
   return (
@@ -720,6 +785,8 @@ function Field({
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
+        placeholder={placeholder}
+        maxLength={maxLength}
         placeholderTextColor="#736b80"
         testID={testID}
       />
@@ -1229,9 +1296,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  salaryCardInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   salaryDue: {
     alignItems: 'flex-end',
     gap: 2,
+  },
+  deductionLine: {
+    fontFamily: appFont,
+    color: colors.dangerText,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
   },
   miniLabel: {
     fontFamily: appFont,
@@ -1366,6 +1445,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  paymentTypeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  paymentTypeButton: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentTypeButtonActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  paymentTypeButtonDanger: {
+    backgroundColor: colors.dangerBg,
+    borderColor: colors.dangerBorder,
+  },
+  paymentTypeText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  paymentTypeTextActive: {
+    color: colors.accentText,
+  },
+  paymentTypeTextDanger: {
+    color: colors.dangerText,
   },
   chip: {
     minHeight: 38,

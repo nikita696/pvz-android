@@ -105,16 +105,20 @@ async function applyAction(body: ApiAction) {
   }
 
   if (body.action === 'addPayment') {
+    const kind = body.kind === 'deduction' ? 'deduction' : 'payment';
+    const comment = (body.comment ?? '').trim();
+
     if (
       !body.employeeId ||
       !Number.isFinite(body.amount) ||
       body.amount <= 0 ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(body.paidAt)
+      !/^\d{4}-\d{2}-\d{2}$/.test(body.paidAt) ||
+      comment.length > 80
     ) {
       throw new Error('BAD_REQUEST');
     }
 
-    await addPayment(body.employeeId, body.amount, body.paidAt);
+    await addPayment(body.employeeId, body.amount, body.paidAt, kind, comment);
     return;
   }
 

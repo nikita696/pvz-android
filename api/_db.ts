@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 
-import type { AppState, Employee, SalaryPayment, Shift } from '../src/domain/types';
+import type { AppState, Employee, PaymentKind, SalaryPayment, Shift } from '../src/domain/types';
 
 const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
 const EMPLOYEE_COLORS = ['#f0dd92', '#a8d5ba', '#94b8ff', '#f5a6c8', '#c6a8ff', '#8fd7d1'];
@@ -53,9 +53,19 @@ export async function ensureSchema() {
       id text primary key,
       employee_id text not null references employees(id) on delete cascade,
       amount integer not null check (amount >= 0),
+      kind text not null default 'payment',
+      note text not null default '',
       paid_at date not null,
       created_at timestamptz not null default now()
     )
+  `;
+  await sql`
+    alter table salary_payments
+    add column if not exists kind text not null default 'payment'
+  `;
+  await sql`
+    alter table salary_payments
+    add column if not exists note text not null default ''
   `;
   await sql`
     insert into locations (id, name)
@@ -81,7 +91,7 @@ export async function getState(): Promise<AppState> {
       order by work_date asc, created_at asc
     `,
     sql`
-      select id, employee_id, amount, to_char(paid_at, 'YYYY-MM-DD') as paid_at
+      select id, employee_id, amount, kind, note, to_char(paid_at, 'YYYY-MM-DD') as paid_at
       from salary_payments
       order by paid_at asc, created_at asc
     `,
@@ -110,6 +120,8 @@ export async function getState(): Promise<AppState> {
       employeeId: String(row.employee_id),
       amount: Number(row.amount),
       paidAt: String(row.paid_at),
+      kind: row.kind === 'deduction' ? 'deduction' : 'payment',
+      comment: String(row.note ?? ''),
     })),
   };
 }
@@ -179,12 +191,18 @@ export async function toggleShift(employeeId: string, date: string) {
   `;
 }
 
-export async function addPayment(employeeId: string, amount: number, paidAt: string) {
+export async function addPayment(
+  employeeId: string,
+  amount: number,
+  paidAt: string,
+  kind: PaymentKind,
+  comment: string,
+) {
   const sql = getSql();
   await ensureSchema();
   await sql`
-    insert into salary_payments (id, employee_id, amount, paid_at)
-    values (${crypto.randomUUID()}, ${employeeId}, ${Math.round(amount)}, ${paidAt})
+    insert into salary_payments (id, employee_id, amount, paid_at, kind, note)
+    values (${crypto.randomUUID()}, ${employeeId}, ${Math.round(amount)}, ${paidAt}, ${kind}, ${comment})
   `;
 }
 
