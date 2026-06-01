@@ -66,19 +66,19 @@ const HOLIDAYS: Record<string, string> = {
 };
 const appFont = 'Arial';
 const colors = {
-  background: '#0f1110',
-  panel: '#181b19',
-  panelSoft: '#111412',
-  border: '#2b302c',
-  borderStrong: '#667667',
-  text: '#f5f2ea',
-  muted: '#979f95',
+  background: '#f7f8f5',
+  panel: '#ffffff',
+  panelSoft: '#f2f4ef',
+  border: '#dfe5dc',
+  borderStrong: '#a8b7a8',
+  text: '#172018',
+  muted: '#6f7a70',
   accent: '#a8d5ba',
-  accentWarm: '#f0dd92',
-  accentText: '#101411',
-  dangerBg: '#342426',
-  dangerBorder: '#6d474d',
-  dangerText: '#ffc7cd',
+  accentWarm: '#f4df8f',
+  accentText: '#111a13',
+  dangerBg: '#fff0f2',
+  dangerBorder: '#efb8c0',
+  dangerText: '#a13d4d',
 };
 
 type DialogName = 'assign' | 'deleteEmployee' | 'employees' | 'location' | 'payment' | null;
@@ -241,7 +241,7 @@ export default function AppRoot() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <View style={styles.shell}>
         <View style={styles.header}>
           <View style={styles.headerTitle}>
@@ -260,7 +260,7 @@ export default function AppRoot() {
             <Text style={styles.subtitle}>Удобный трекер смен и выплат</Text>
           </View>
           <Pressable style={styles.iconButton} onPress={loadState} testID="refresh">
-            <RefreshCw size={20} color="#17121f" />
+            <RefreshCw size={20} color={colors.accentText} />
           </Pressable>
         </View>
 
@@ -294,7 +294,7 @@ export default function AppRoot() {
                   </Text>
                 </View>
                 <Pressable style={styles.smallButton} onPress={() => setDialog('employees')} testID="open-employees">
-                  <UserPlus size={18} color="#17121f" />
+                  <UserPlus size={18} color={colors.accentText} />
                   <Text style={styles.smallButtonText}>Сотрудники</Text>
                 </Pressable>
               </View>
@@ -333,7 +333,7 @@ export default function AppRoot() {
                   onPress={() => setDialog('payment')}
                   testID="open-payment"
                 >
-                  <Plus size={18} color="#17121f" />
+                  <Plus size={18} color={colors.accentText} />
                   <Text style={styles.smallButtonText}>Выплата</Text>
                 </Pressable>
               </View>
@@ -356,7 +356,7 @@ export default function AppRoot() {
 
         {saving ? (
           <View style={styles.saving}>
-            <ActivityIndicator color="#17121f" />
+            <ActivityIndicator color={colors.accentText} />
             <Text style={styles.savingText}>Сохраняю</Text>
           </View>
         ) : null}
@@ -720,11 +720,11 @@ function MonthStepper({ month, onChange }: { month: string; onChange: (month: st
   return (
     <View style={styles.monthStepper}>
       <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, -1))}>
-        <ChevronLeft size={18} color="#17121f" />
+        <ChevronLeft size={18} color={colors.accentText} />
       </Pressable>
       <Text style={styles.monthText}>{formatMonthLabel(month)}</Text>
       <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, 1))}>
-        <ChevronRight size={18} color="#17121f" />
+        <ChevronRight size={18} color={colors.accentText} />
       </Pressable>
     </View>
   );
@@ -787,7 +787,7 @@ function Field({
         keyboardType={keyboardType}
         placeholder={placeholder}
         maxLength={maxLength}
-        placeholderTextColor="#736b80"
+        placeholderTextColor="#9aa399"
         testID={testID}
       />
     </View>
@@ -797,7 +797,7 @@ function Field({
 function EmptyState({ text }: { text: string }) {
   return (
     <View style={styles.emptyState}>
-      <CalendarDays size={24} color="#837a91" />
+      <CalendarDays size={24} color={colors.muted} />
       <Text style={styles.emptyText}>{text}</Text>
     </View>
   );
@@ -1015,16 +1015,16 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   dayCellOff: {
-    backgroundColor: '#21161a',
-    borderColor: '#3a2730',
+    backgroundColor: '#fff3f6',
+    borderColor: '#f1cfd8',
   },
   dayCellHoliday: {
-    backgroundColor: '#26171d',
-    borderColor: '#462a36',
+    backgroundColor: '#ffeaf0',
+    borderColor: '#eabac7',
   },
   dayCellFilled: {
     borderWidth: 2,
-    borderColor: '#9fd2ad',
+    borderColor: '#5fab78',
   },
   dayCellSelected: {
     borderWidth: 2,
@@ -1041,15 +1041,15 @@ const styles = StyleSheet.create({
   },
   dayNames: {
     width: '100%',
-    maxHeight: 28,
+    maxHeight: 30,
     alignItems: 'center',
     overflow: 'hidden',
-    gap: 1,
+    gap: 0,
   },
   dayName: {
     fontFamily: appFont,
-    fontSize: 8,
-    lineHeight: 9,
+    fontSize: 9,
+    lineHeight: 10,
     fontWeight: '900',
     maxWidth: '100%',
     textAlign: 'center',
@@ -1063,7 +1063,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 5,
-    backgroundColor: '#24261f',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: colors.borderStrong,
   },
@@ -1119,7 +1119,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   employeeShiftRowActive: {
-    backgroundColor: '#20291f',
+    backgroundColor: '#edf8f0',
     borderColor: colors.accent,
   },
   employeeName: {
@@ -1148,13 +1148,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 11,
     paddingVertical: 8,
-    backgroundColor: '#1f1519',
+    backgroundColor: '#fff3f6',
     borderWidth: 1,
-    borderColor: '#3a2630',
+    borderColor: '#f1cfd8',
   },
   assignmentDayOffText: {
     fontFamily: appFont,
-    color: '#f2cdd8',
+    color: colors.dangerText,
     fontSize: 12,
     lineHeight: 16,
     fontWeight: '800',
@@ -1173,7 +1173,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   assignmentRowActive: {
-    backgroundColor: '#20291f',
+    backgroundColor: '#edf8f0',
     borderColor: colors.accent,
   },
   employeeManagerList: {
@@ -1375,7 +1375,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: 'rgba(20,28,22,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
