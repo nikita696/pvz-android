@@ -26,6 +26,8 @@ const state: AppState = {
   shifts: [
     { id: 'shift-1', employeeId: 'emp-1', date: '2026-05-02' },
     { id: 'shift-2', employeeId: 'emp-1', date: '2026-05-03' },
+    { id: 'shift-today', employeeId: 'emp-1', date: '2026-05-11' },
+    { id: 'shift-future', employeeId: 'emp-1', date: '2026-05-12' },
     { id: 'shift-archived', employeeId: 'emp-archived', date: '2026-05-02' },
     { id: 'shift-old', employeeId: 'emp-1', date: '2026-04-30' },
   ],
@@ -54,20 +56,36 @@ const state: AppState = {
       kind: 'payment',
       comment: 'прошлая выплата',
     },
+    {
+      id: 'pay-future',
+      employeeId: 'emp-1',
+      amount: 9999,
+      paidAt: '2026-05-12',
+      kind: 'payment',
+      comment: 'будущая выплата',
+    },
+    {
+      id: 'deduction-future',
+      employeeId: 'emp-1',
+      amount: 9999,
+      paidAt: '2026-05-13',
+      kind: 'deduction',
+      comment: 'будущий штраф',
+    },
   ],
 };
 
 describe('minimal payroll formula', () => {
-  it('uses all worked shifts times daily rate minus payouts and deductions', () => {
-    const salary = calculateSalary(state, state.employees[0], '2026-05');
+  it('uses worked shifts through today times daily rate minus current payouts and deductions', () => {
+    const salary = calculateSalary(state, state.employees[0], '2026-05', '2026-05-11');
 
-    expect(salary.workedShifts).toBe(3);
+    expect(salary.workedShifts).toBe(4);
     expect(salary.dailyRate).toBe(2500);
-    expect(salary.accrued).toBe(7500);
+    expect(salary.accrued).toBe(10000);
     expect(salary.paid).toBe(1700);
     expect(salary.deductions).toBe(300);
     expect(salary.paidAndDeductions).toBe(2000);
-    expect(salary.due).toBe(5500);
+    expect(salary.due).toBe(8000);
   });
 
   it('checks if a shift is already marked', () => {
@@ -76,7 +94,7 @@ describe('minimal payroll formula', () => {
   });
 
   it('sums total employee debt', () => {
-    expect(calculateTotalDue(state, '2026-05')).toBe(5500);
+    expect(calculateTotalDue(state, '2026-05', '2026-05-11')).toBe(8000);
   });
 
   it('ignores archived employees in calendar shift counters', () => {

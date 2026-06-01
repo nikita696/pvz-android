@@ -470,7 +470,7 @@ export default function AppRoot() {
               <View style={styles.sectionHeader}>
                 <View>
                   <Text style={styles.sectionTitle}>Зарплата</Text>
-                  <Text style={styles.muted}>Все смены × ставка − выплаты и штрафы</Text>
+                  <Text style={styles.muted}>Отработано по сегодня × ставка − выплаты и штрафы</Text>
                 </View>
                 <Pressable
                   style={styles.smallButton}

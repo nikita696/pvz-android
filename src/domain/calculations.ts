@@ -6,6 +6,13 @@ export function monthKeyFromDate(date: Date): string {
   return `${year}-${month}`;
 }
 
+export function isoDateFromLocalDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function isInMonth(date: string, month: string): boolean {
   return date.startsWith(`${month}-`);
 }
@@ -22,11 +29,20 @@ export function hasShift(state: AppState, employeeId: string, date: string): boo
   return state.shifts.some((shift) => shift.employeeId === employeeId && shift.date === date);
 }
 
-export function calculateSalary(state: AppState, employee: Employee, month: string): SalarySummary {
+export function calculateSalary(
+  state: AppState,
+  employee: Employee,
+  month: string,
+  cutoffDate = isoDateFromLocalDate(),
+): SalarySummary {
   void month;
 
-  const workedShifts = state.shifts.filter((shift) => shift.employeeId === employee.id).length;
-  const employeePayments = state.payments.filter((payment) => payment.employeeId === employee.id);
+  const workedShifts = state.shifts.filter(
+    (shift) => shift.employeeId === employee.id && shift.date <= cutoffDate,
+  ).length;
+  const employeePayments = state.payments.filter(
+    (payment) => payment.employeeId === employee.id && payment.paidAt <= cutoffDate,
+  );
   const paid = employeePayments
     .filter((payment) => payment.kind !== 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
@@ -48,12 +64,16 @@ export function calculateSalary(state: AppState, employee: Employee, month: stri
   };
 }
 
-export function calculateTotalDue(state: AppState, month: string): number {
+export function calculateTotalDue(
+  state: AppState,
+  month: string,
+  cutoffDate = isoDateFromLocalDate(),
+): number {
   void month;
 
   return state.employees
     .filter((employee) => employee.active)
-    .reduce((sum, employee) => sum + calculateSalary(state, employee, month).due, 0);
+    .reduce((sum, employee) => sum + calculateSalary(state, employee, month, cutoffDate).due, 0);
 }
 
 export function getShiftCountByDate(state: AppState, date: string): number {
