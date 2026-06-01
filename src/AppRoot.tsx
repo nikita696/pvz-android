@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import {
   Archive,
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   PencilLine,
@@ -31,7 +32,7 @@ import {
   hasShift,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
-import type { ApiAction, AppState, Employee, PaymentKind } from './domain/types';
+import type { ApiAction, AppState, Employee, PaymentKind, SalaryPayment } from './domain/types';
 
 const MONTH_NAMES = [
   'январь',
@@ -81,8 +82,20 @@ const colors = {
   dangerText: '#a13d4d',
 };
 
-type DialogName = 'assign' | 'deleteEmployee' | 'employees' | 'location' | 'payment' | null;
+type DialogName =
+  | 'assign'
+  | 'deleteEmployee'
+  | 'employeePayments'
+  | 'employees'
+  | 'location'
+  | 'payment'
+  | null;
 type DayOffInfo = { label: string; holiday: boolean } | null;
+type PaymentMonthGroup = {
+  month: string;
+  payments: SalaryPayment[];
+  total: number;
+};
 
 export default function AppRoot() {
   const [state, setState] = useState<AppState>(emptyAppState);
@@ -92,11 +105,14 @@ export default function AppRoot() {
   const [locationName, setLocationName] = useState('');
   const [employeeName, setEmployeeName] = useState('');
   const [employeeToDeleteId, setEmployeeToDeleteId] = useState('');
+  const [historyEmployeeId, setHistoryEmployeeId] = useState('');
+  const [expandedPaymentMonths, setExpandedPaymentMonths] = useState<Record<string, boolean>>({});
   const [dailyRate, setDailyRate] = useState('2500');
   const [paymentEmployeeId, setPaymentEmployeeId] = useState('');
   const [paymentKind, setPaymentKind] = useState<PaymentKind>('payment');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentComment, setPaymentComment] = useState('');
+  const [paymentDateText, setPaymentDateText] = useState(formatDate(TODAY));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -123,6 +139,10 @@ export default function AppRoot() {
     [activeEmployees, selectedDate, state],
   );
   const selectedDayOff = useMemo(() => getDayOffInfo(selectedDate), [selectedDate]);
+  const historyEmployee = useMemo(
+    () => state.employees.find((employee) => employee.id === historyEmployeeId),
+    [historyEmployeeId, state.employees],
+  );
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
 
   useEffect(() => {
@@ -187,9 +207,15 @@ export default function AppRoot() {
   async function addPayment() {
     const amount = Number(paymentAmount);
     const employeeId = paymentEmployeeId || activeEmployees[0]?.id;
+    const paidAt = parseDateInput(paymentDateText);
 
     if (!employeeId || !Number.isFinite(amount) || amount <= 0) {
       setError('Выбери сотрудника и сумму.');
+      return;
+    }
+
+    if (!paidAt) {
+      setError('Укажи дату в формате ДД.ММ.ГГГГ.');
       return;
     }
 
@@ -197,7 +223,7 @@ export default function AppRoot() {
       action: 'addPayment',
       employeeId,
       amount,
-      paidAt: selectedDate,
+      paidAt,
       kind: paymentKind,
       comment: paymentComment.trim(),
     });
@@ -205,7 +231,26 @@ export default function AppRoot() {
     setPaymentComment('');
     setPaymentEmployeeId('');
     setPaymentKind('payment');
+    setPaymentDateText(formatDate(selectedDate));
     setDialog(null);
+  }
+
+  function openPaymentDialog() {
+    setPaymentDateText(formatDate(selectedDate));
+    setDialog('payment');
+  }
+
+  function openEmployeePayments(employeeId: string) {
+    setHistoryEmployeeId(employeeId);
+    setExpandedPaymentMonths({});
+    setDialog('employeePayments');
+  }
+
+  function togglePaymentMonth(month: string, defaultExpanded: boolean) {
+    setExpandedPaymentMonths((current) => ({
+      ...current,
+      [month]: !(current[month] ?? defaultExpanded),
+    }));
   }
 
   function openAssignment(date: string) {
@@ -330,7 +375,7 @@ export default function AppRoot() {
                 <Pressable
                   style={styles.smallButton}
                   disabled={!activeEmployees.length}
-                  onPress={() => setDialog('payment')}
+                  onPress={openPaymentDialog}
                   testID="open-payment"
                 >
                   <Plus size={18} color={colors.accentText} />
@@ -348,6 +393,7 @@ export default function AppRoot() {
                   state={state}
                   employee={employee}
                   month={selectedMonth}
+                  onOpen={() => openEmployeePayments(employee.id)}
                 />
               ))}
             </View>
@@ -548,6 +594,13 @@ export default function AppRoot() {
             </Pressable>
           </View>
           <Field
+            label="Дата, ДД.ММ.ГГГГ"
+            value={paymentDateText}
+            onChangeText={setPaymentDateText}
+            placeholder="26.05.2026"
+            testID="payment-date"
+          />
+          <Field
             label="Сумма, ₽"
             value={paymentAmount}
             onChangeText={setPaymentAmount}
@@ -567,6 +620,25 @@ export default function AppRoot() {
               {paymentKind === 'deduction' ? 'Сохранить удержание' : 'Сохранить выплату'}
             </Text>
           </Pressable>
+        </Dialog>
+
+        <Dialog
+          visible={dialog === 'employeePayments' && Boolean(historyEmployee)}
+          title={historyEmployee ? `Выплаты: ${historyEmployee.name}` : 'Выплаты'}
+          closeTestID="close-payment-history"
+          onClose={() => {
+            setHistoryEmployeeId('');
+            setDialog(null);
+          }}
+        >
+          {historyEmployee ? (
+            <PaymentHistory
+              state={state}
+              employee={historyEmployee}
+              expandedMonths={expandedPaymentMonths}
+              onToggleMonth={togglePaymentMonth}
+            />
+          ) : null}
         </Dialog>
       </View>
     </SafeAreaView>
@@ -607,6 +679,7 @@ function CalendarGrid({
 
               const date = `${month}-${String(day).padStart(2, '0')}`;
               const selected = selectedDate === date;
+              const today = date === TODAY;
               const employeesOnShift = getShiftEmployeesByDate(state, date);
               const dayOff = getDayOffInfo(date);
 
@@ -629,7 +702,17 @@ function CalendarGrid({
                   onHoverOut={() => setHoveredDayOff(null)}
                   testID={`day-${day}`}
                 >
-                  <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{day}</Text>
+                  <View style={[styles.dayNumberBadge, today && styles.dayNumberBadgeToday]}>
+                    <Text
+                      style={[
+                        styles.dayText,
+                        selected && styles.dayTextSelected,
+                        today && styles.dayTextToday,
+                      ]}
+                    >
+                      {day}
+                    </Text>
+                  </View>
                   {employeesOnShift.length > 0 ? (
                     <View style={styles.dayNames}>
                       {employeesOnShift.slice(0, 3).map((employee) => (
@@ -696,15 +779,22 @@ function SalaryCard({
   state,
   employee,
   month,
+  onOpen,
 }: {
   state: AppState;
   employee: Employee;
   month: string;
+  onOpen: () => void;
 }) {
   const salary = calculateSalary(state, employee, month);
 
   return (
-    <View style={styles.salaryCard}>
+    <Pressable
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.salaryCard, pressed && styles.salaryCardPressed]}
+      onPress={onOpen}
+      testID={`open-payment-history-${employee.name}`}
+    >
       <View style={styles.salaryCardInfo}>
         <View style={styles.employeeTitleRow}>
           <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
@@ -721,7 +811,93 @@ function SalaryCard({
         <Text style={styles.miniLabel}>К выплате</Text>
         <Text style={styles.dueMoney}>{formatMoney(salary.due)}</Text>
       </View>
-    </View>
+    </Pressable>
+  );
+}
+
+function PaymentHistory({
+  state,
+  employee,
+  expandedMonths,
+  onToggleMonth,
+}: {
+  state: AppState;
+  employee: Employee;
+  expandedMonths: Record<string, boolean>;
+  onToggleMonth: (month: string, defaultExpanded: boolean) => void;
+}) {
+  const groups = getPaymentMonthGroups(state, employee.id);
+
+  if (!groups.length) {
+    return <EmptyState text="Выплат и удержаний пока нет." />;
+  }
+
+  return (
+    <ScrollView style={styles.historyScroll} contentContainerStyle={styles.historyList}>
+      {groups.map((group, index) => {
+        const defaultExpanded = index === 0;
+        const expanded = expandedMonths[group.month] ?? defaultExpanded;
+
+        return (
+          <View key={group.month} style={styles.historyMonth}>
+            <Pressable
+              style={styles.historyMonthHeader}
+              onPress={() => onToggleMonth(group.month, defaultExpanded)}
+              testID={`history-month-${group.month}`}
+            >
+              {expanded ? (
+                <ChevronDown size={18} color={colors.text} />
+              ) : (
+                <ChevronRight size={18} color={colors.text} />
+              )}
+              <View style={styles.historyMonthTitle}>
+                <Text style={styles.historyMonthName}>{formatHistoryMonthLabel(group.month)}</Text>
+                <Text style={styles.muted}>
+                  Записей: {group.payments.length} · Учтено: {formatMoney(group.total)}
+                </Text>
+              </View>
+            </Pressable>
+
+            {expanded ? (
+              <View style={styles.historyTable}>
+                <View style={styles.historyHead}>
+                  <Text style={styles.historyHeadText}>Дата</Text>
+                  <Text style={[styles.historyHeadText, styles.historyAmountCell]}>Сумма</Text>
+                </View>
+                {group.payments.map((payment) => (
+                  <View key={payment.id} style={styles.historyRow}>
+                    <View style={styles.historyMainCell}>
+                      <Text style={styles.historyDate}>{formatDate(payment.paidAt)}</Text>
+                      <Text
+                        style={[
+                          styles.historyKind,
+                          payment.kind === 'deduction' && styles.historyKindDeduction,
+                        ]}
+                      >
+                        {payment.kind === 'deduction' ? 'Удержание' : 'Выплата'}
+                      </Text>
+                      {payment.comment ? (
+                        <Text style={styles.historyComment} numberOfLines={2}>
+                          {payment.comment}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[
+                        styles.historyAmount,
+                        payment.kind === 'deduction' && styles.historyAmountDeduction,
+                      ]}
+                    >
+                      {payment.kind === 'deduction' ? `− ${formatMoney(payment.amount)}` : formatMoney(payment.amount)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -859,9 +1035,65 @@ function formatMonthLabel(month: string): string {
   return `${MONTH_NAMES[monthNumber - 1]} ${year}`;
 }
 
+function formatHistoryMonthLabel(month: string): string {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const monthName = MONTH_NAMES[monthNumber - 1];
+  return `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)} ${year} г.`;
+}
+
 function formatDate(date: string): string {
   const [year, month, day] = date.split('-');
   return `${day}.${month}.${year}`;
+}
+
+function parseDateInput(value: string): string | null {
+  const text = value.trim();
+  const ruMatch = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text);
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+
+  if (ruMatch) {
+    const [, day, month, year] = ruMatch;
+    return getValidIsoDate(Number(year), Number(month), Number(day));
+  }
+
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    return getValidIsoDate(Number(year), Number(month), Number(day));
+  }
+
+  return null;
+}
+
+function getValidIsoDate(year: number, month: number, day: number): string | null {
+  const parsed = new Date(year, month - 1, day);
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function getPaymentMonthGroups(state: AppState, employeeId: string): PaymentMonthGroup[] {
+  const groups = new Map<string, SalaryPayment[]>();
+
+  state.payments
+    .filter((payment) => payment.employeeId === employeeId)
+    .sort((first, second) => second.paidAt.localeCompare(first.paidAt))
+    .forEach((payment) => {
+      const month = payment.paidAt.slice(0, 7);
+      groups.set(month, [...(groups.get(month) ?? []), payment]);
+    });
+
+  return [...groups.entries()].map(([month, payments]) => ({
+    month,
+    payments,
+    total: payments.reduce((sum, payment) => sum + payment.amount, 0),
+  }));
 }
 
 const styles = StyleSheet.create({
@@ -1039,6 +1271,17 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.accentWarm,
   },
+  dayNumberBadge: {
+    minWidth: 22,
+    minHeight: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayNumberBadgeToday: {
+    backgroundColor: colors.accentText,
+  },
   dayText: {
     fontFamily: appFont,
     color: colors.text,
@@ -1047,6 +1290,9 @@ const styles = StyleSheet.create({
   },
   dayTextSelected: {
     color: colors.text,
+  },
+  dayTextToday: {
+    color: '#ffffff',
   },
   dayNames: {
     width: '100%',
@@ -1307,6 +1553,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  salaryCardPressed: {
+    opacity: 0.82,
+  },
   salaryCardInfo: {
     flex: 1,
     minWidth: 0,
@@ -1394,6 +1643,7 @@ const styles = StyleSheet.create({
   dialog: {
     width: '100%',
     maxWidth: 420,
+    maxHeight: '88%',
     borderRadius: 10,
     backgroundColor: colors.panel,
     borderWidth: 1,
@@ -1438,6 +1688,108 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     fontSize: 15,
     fontWeight: '700',
+  },
+  historyScroll: {
+    maxHeight: 460,
+  },
+  historyList: {
+    gap: 10,
+  },
+  historyMonth: {
+    borderRadius: 8,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  historyMonthHeader: {
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  historyMonthTitle: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  historyMonthName: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  historyTable: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.panel,
+  },
+  historyHead: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  historyHeadText: {
+    flex: 1,
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  historyRow: {
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  historyMainCell: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  historyDate: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  historyKind: {
+    fontFamily: appFont,
+    color: '#2e7b4f',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  historyKindDeduction: {
+    color: colors.dangerText,
+  },
+  historyComment: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  historyAmountCell: {
+    textAlign: 'right',
+  },
+  historyAmount: {
+    minWidth: 96,
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'right',
+  },
+  historyAmountDeduction: {
+    color: colors.dangerText,
   },
   primaryButton: {
     minHeight: 50,
