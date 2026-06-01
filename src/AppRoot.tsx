@@ -67,19 +67,26 @@ const HOLIDAYS: Record<string, string> = {
 };
 const appFont = 'Arial';
 const colors = {
-  background: '#f7f8f5',
+  background: '#fbfcfb',
   panel: '#ffffff',
-  panelSoft: '#f2f4ef',
-  border: '#dfe5dc',
-  borderStrong: '#a8b7a8',
-  text: '#172018',
-  muted: '#6f7a70',
-  accent: '#a8d5ba',
-  accentWarm: '#f4df8f',
-  accentText: '#111a13',
-  dangerBg: '#fff0f2',
-  dangerBorder: '#efb8c0',
-  dangerText: '#a13d4d',
+  panelSoft: '#f4f7f5',
+  border: '#dde6df',
+  borderStrong: '#8ba99a',
+  text: '#121a16',
+  muted: '#68766f',
+  accent: '#b8e6d0',
+  accentStrong: '#197a58',
+  accentSoft: '#eef9f4',
+  accentWarm: '#f5d76e',
+  accentWarmSoft: '#fff4bf',
+  accentText: '#102017',
+  weekendBg: '#fff7f8',
+  weekendBorder: '#f3d7de',
+  holidayBg: '#fff0f3',
+  holidayBorder: '#eebbc7',
+  dangerBg: '#fff1f3',
+  dangerBorder: '#efbdc7',
+  dangerText: '#a43d50',
 };
 
 type DialogName =
@@ -432,7 +439,7 @@ export default function AppRoot() {
 
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <View>
+                <View style={styles.sectionHeaderText}>
                   <Text style={styles.sectionTitle}>{selectedDateLabel}</Text>
                   <Text style={styles.muted}>
                     {selectedDayShifts.length ? `${selectedDayShifts.length} смен(ы)` : 'Смен нет'}
@@ -447,7 +454,14 @@ export default function AppRoot() {
               {activeEmployees.length ? (
                 selectedShiftEmployees.length ? (
                   selectedShiftEmployees.map((employee) => (
-                    <View key={employee.id} style={[styles.employeeShiftRow, styles.employeeShiftRowActive]}>
+                    <View
+                      key={employee.id}
+                      style={[
+                        styles.employeeShiftRow,
+                        styles.employeeShiftRowActive,
+                        { borderLeftColor: employee.color },
+                      ]}
+                    >
                       <View>
                         <View style={styles.employeeTitleRow}>
                           <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
@@ -468,7 +482,7 @@ export default function AppRoot() {
 
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <View>
+                <View style={styles.sectionHeaderText}>
                   <Text style={styles.sectionTitle}>Зарплата</Text>
                   <Text style={styles.muted}>Отработано по сегодня × ставка − выплаты и штрафы</Text>
                 </View>
@@ -526,7 +540,11 @@ export default function AppRoot() {
                 return (
                   <Pressable
                     key={employee.id}
-                    style={[styles.assignmentRow, active && styles.assignmentRowActive]}
+                    style={[
+                      styles.assignmentRow,
+                      active && styles.assignmentRowActive,
+                      active && { borderColor: employee.color },
+                    ]}
                     onPress={() => void toggleShiftAndClose(employee.id)}
                     testID={`assign-employee-${employee.name}`}
                   >
@@ -898,6 +916,7 @@ function CalendarGrid({
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
                     employeesOnShift.length > 0 && styles.dayCellFilled,
+                    employeesOnShift.length > 0 && { borderColor: employeesOnShift[0].color },
                     selected && styles.dayCellSelected,
                   ]}
                   onPress={() => onSelect(date)}
@@ -998,7 +1017,11 @@ function SalaryCard({
   return (
     <Pressable
       accessibilityRole="button"
-      style={({ pressed }) => [styles.salaryCard, pressed && styles.salaryCardPressed]}
+      style={({ pressed }) => [
+        styles.salaryCard,
+        { borderLeftColor: employee.color },
+        pressed && styles.salaryCardPressed,
+      ]}
       onPress={onOpen}
       testID={`open-payment-history-${employee.name}`}
     >
@@ -1343,9 +1366,9 @@ const styles = StyleSheet.create({
     maxWidth: 620,
   },
   header: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 14,
+    paddingBottom: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1365,9 +1388,9 @@ const styles = StyleSheet.create({
   locationName: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 27,
+    fontSize: 26,
     lineHeight: 32,
-    fontWeight: '800',
+    fontWeight: '900',
     flexShrink: 1,
     textDecorationLine: 'underline',
     textDecorationColor: colors.borderStrong,
@@ -1384,12 +1407,13 @@ const styles = StyleSheet.create({
     fontFamily: appFont,
     color: colors.muted,
     fontSize: 13,
+    lineHeight: 18,
     marginTop: 4,
   },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1402,7 +1426,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 14,
-    paddingBottom: 26,
+    paddingBottom: 30,
     gap: 14,
   },
   calendarCard: {
@@ -1410,7 +1434,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
+    padding: 13,
     gap: 14,
   },
   cardHeader: {
@@ -1439,9 +1463,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   roundButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1479,7 +1503,7 @@ const styles = StyleSheet.create({
   dayCell: {
     flex: 1,
     aspectRatio: 1,
-    borderRadius: 8,
+    borderRadius: 9,
     backgroundColor: colors.panelSoft,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1491,16 +1515,17 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   dayCellOff: {
-    backgroundColor: '#fff3f6',
-    borderColor: '#f1cfd8',
+    backgroundColor: colors.weekendBg,
+    borderColor: colors.weekendBorder,
   },
   dayCellHoliday: {
-    backgroundColor: '#ffeaf0',
-    borderColor: '#eabac7',
+    backgroundColor: colors.holidayBg,
+    borderColor: colors.holidayBorder,
   },
   dayCellFilled: {
     borderWidth: 2,
-    borderColor: '#5fab78',
+    borderColor: colors.accentStrong,
+    backgroundColor: '#ffffff',
   },
   dayCellSelected: {
     borderWidth: 2,
@@ -1571,29 +1596,40 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: 2,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 10,
+  },
+  sectionHeaderText: {
+    flex: 1,
+    minWidth: 0,
   },
   sectionTitle: {
     fontFamily: appFont,
     color: colors.text,
     fontSize: 21,
-    fontWeight: '800',
+    lineHeight: 26,
+    fontWeight: '900',
   },
   smallButton: {
     minHeight: 40,
     borderRadius: 20,
-    paddingHorizontal: 14,
+    paddingHorizontal: 13,
     backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: '#a5d8bf',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 7,
+    flexShrink: 0,
   },
   smallButtonText: {
     fontFamily: appFont,
     color: colors.accentText,
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: '800',
   },
   employeeShiftRow: {
@@ -1603,14 +1639,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
+    borderLeftWidth: 5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
   employeeShiftRowActive: {
-    backgroundColor: '#edf8f0',
-    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+    borderColor: '#c7e7d5',
   },
   employeeName: {
     fontFamily: appFont,
@@ -1640,9 +1677,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 11,
     paddingVertical: 8,
-    backgroundColor: '#fff3f6',
+    backgroundColor: colors.weekendBg,
     borderWidth: 1,
-    borderColor: '#f1cfd8',
+    borderColor: colors.weekendBorder,
   },
   assignmentDayOffText: {
     fontFamily: appFont,
@@ -1665,8 +1702,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   assignmentRowActive: {
-    backgroundColor: '#edf8f0',
-    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+    borderColor: '#c7e7d5',
   },
   employeeManagerList: {
     gap: 8,
@@ -1767,7 +1804,9 @@ const styles = StyleSheet.create({
   totalCard: {
     borderRadius: 8,
     padding: 16,
-    backgroundColor: colors.accentWarm,
+    backgroundColor: colors.accentWarmSoft,
+    borderWidth: 1,
+    borderColor: colors.accentWarm,
     gap: 4,
   },
   totalMoney: {
@@ -1783,6 +1822,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
+    borderLeftWidth: 5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1797,6 +1837,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   salaryDue: {
+    minWidth: 88,
     alignItems: 'flex-end',
     gap: 2,
   },
@@ -1815,8 +1856,8 @@ const styles = StyleSheet.create({
   },
   dueMoney: {
     fontFamily: appFont,
-    color: colors.accentWarm,
-    fontSize: 17,
+    color: colors.accentStrong,
+    fontSize: 18,
     fontWeight: '900',
   },
   emptyState: {
@@ -2063,6 +2104,8 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderRadius: 25,
     backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: '#a5d8bf',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2121,7 +2164,7 @@ const styles = StyleSheet.create({
   },
   chipActive: {
     backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    borderColor: colors.accentStrong,
   },
   chipText: {
     fontFamily: appFont,
