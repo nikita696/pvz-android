@@ -544,9 +544,9 @@ function CalendarGrid({
                   key={date}
                   style={[
                     styles.dayCell,
+                    employeesOnShift.length > 0 && styles.dayCellFilled,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
-                    employeesOnShift.length > 0 && styles.dayCellFilled,
                     selected && styles.dayCellSelected,
                   ]}
                   onPress={() => onSelect(date)}
