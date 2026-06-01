@@ -1015,12 +1015,12 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   dayCellOff: {
-    backgroundColor: '#1a1417',
-    borderColor: '#302127',
+    backgroundColor: '#21161a',
+    borderColor: '#3a2730',
   },
   dayCellHoliday: {
-    backgroundColor: '#1f1519',
-    borderColor: '#3a2630',
+    backgroundColor: '#26171d',
+    borderColor: '#462a36',
   },
   dayCellFilled: {
     borderWidth: 2,
