@@ -306,11 +306,11 @@ export default function AppRoot() {
                       <View>
                         <View style={styles.employeeTitleRow}>
                           <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
-                          <Text style={styles.employeeName}>{employee.name}</Text>
+                          <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
                         </View>
                         <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
                       </View>
-                      <Text style={[styles.shiftStatus, styles.shiftStatusActive]}>На смене</Text>
+                      <Text style={[styles.shiftStatus, { color: employee.color }]}>На смене</Text>
                     </View>
                   ))
                 ) : (
@@ -386,9 +386,9 @@ export default function AppRoot() {
                   >
                     <View style={styles.employeeTitleRow}>
                       <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
-                      <Text style={styles.employeeName}>{employee.name}</Text>
+                      <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
                     </View>
-                    <Text style={[styles.shiftStatus, active && styles.shiftStatusActive]}>
+                    <Text style={[styles.shiftStatus, active && { color: employee.color }]}>
                       {active ? 'На смене' : 'Добавить'}
                     </Text>
                   </Pressable>
@@ -415,7 +415,7 @@ export default function AppRoot() {
                   <View style={styles.employeeTitleRow}>
                     <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
                     <View>
-                      <Text style={styles.employeeName}>{employee.name}</Text>
+                      <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
                       <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
                     </View>
                   </View>
@@ -496,13 +496,19 @@ export default function AppRoot() {
                 key={employee.id}
                 style={[
                   styles.chip,
+                  { borderColor: employee.color },
                   (paymentEmployeeId || activeEmployees[0]?.id) === employee.id && styles.chipActive,
+                  (paymentEmployeeId || activeEmployees[0]?.id) === employee.id && {
+                    backgroundColor: employee.color,
+                    borderColor: employee.color,
+                  },
                 ]}
                 onPress={() => setPaymentEmployeeId(employee.id)}
               >
                 <Text
                   style={[
                     styles.chipText,
+                    { color: employee.color },
                     (paymentEmployeeId || activeEmployees[0]?.id) === employee.id && styles.chipTextActive,
                   ]}
                 >
@@ -700,7 +706,10 @@ function SalaryCard({
   return (
     <View style={styles.salaryCard}>
       <View style={styles.salaryCardInfo}>
-        <Text style={styles.employeeName}>{employee.name}</Text>
+        <View style={styles.employeeTitleRow}>
+          <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+          <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+        </View>
         <Text style={styles.muted}>
           {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − выпл. {formatMoney(salary.paid)}
         </Text>
@@ -1041,15 +1050,15 @@ const styles = StyleSheet.create({
   },
   dayNames: {
     width: '100%',
-    maxHeight: 30,
+    maxHeight: 32,
     alignItems: 'center',
     overflow: 'hidden',
     gap: 0,
   },
   dayName: {
     fontFamily: appFont,
-    fontSize: 9,
-    lineHeight: 10,
+    fontSize: 10,
+    lineHeight: 11,
     fontWeight: '900',
     maxWidth: '100%',
     textAlign: 'center',
@@ -1134,9 +1143,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   employeeDot: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
+    width: 12,
+    height: 12,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#ffffff',
   },
   employeeDotMuted: {
     backgroundColor: colors.muted,
@@ -1499,6 +1510,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   chipTextActive: {
-    color: colors.accentText,
+    color: '#ffffff',
   },
 });
