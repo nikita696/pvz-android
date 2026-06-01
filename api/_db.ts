@@ -206,6 +206,37 @@ export async function addPayment(
   `;
 }
 
+export async function updatePayment(
+  id: string,
+  employeeId: string,
+  amount: number,
+  paidAt: string,
+  kind: PaymentKind,
+  comment: string,
+) {
+  const sql = getSql();
+  await ensureSchema();
+  await sql`
+    update salary_payments
+    set amount = ${Math.round(amount)},
+        paid_at = ${paidAt},
+        kind = ${kind},
+        note = ${comment}
+    where id = ${id}
+      and employee_id = ${employeeId}
+  `;
+}
+
+export async function deletePayment(id: string, employeeId: string) {
+  const sql = getSql();
+  await ensureSchema();
+  await sql`
+    delete from salary_payments
+    where id = ${id}
+      and employee_id = ${employeeId}
+  `;
+}
+
 function getEmployeeColor(employeeId: string): string {
   const hash = [...employeeId].reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return EMPLOYEE_COLORS[hash % EMPLOYEE_COLORS.length];

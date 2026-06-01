@@ -5,10 +5,12 @@ import {
   addEmployee,
   addPayment,
   archiveEmployee,
+  deletePayment,
   deleteArchivedEmployee,
   getState,
   toggleShift,
   updateLocationName,
+  updatePayment,
 } from './_db';
 import type { ApiAction } from '../src/domain/types';
 
@@ -119,6 +121,34 @@ async function applyAction(body: ApiAction) {
     }
 
     await addPayment(body.employeeId, body.amount, body.paidAt, kind, comment);
+    return;
+  }
+
+  if (body.action === 'updatePayment') {
+    const kind = body.kind === 'deduction' ? 'deduction' : 'payment';
+    const comment = (body.comment ?? '').trim();
+
+    if (
+      !body.id ||
+      !body.employeeId ||
+      !Number.isFinite(body.amount) ||
+      body.amount <= 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(body.paidAt) ||
+      comment.length > 80
+    ) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await updatePayment(body.id, body.employeeId, body.amount, body.paidAt, kind, comment);
+    return;
+  }
+
+  if (body.action === 'deletePayment') {
+    if (!body.id || !body.employeeId) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await deletePayment(body.id, body.employeeId);
     return;
   }
 

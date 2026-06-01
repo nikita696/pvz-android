@@ -85,6 +85,8 @@ const colors = {
 type DialogName =
   | 'assign'
   | 'deleteEmployee'
+  | 'deletePayment'
+  | 'editPayment'
   | 'employeePayments'
   | 'employees'
   | 'location'
@@ -107,6 +109,8 @@ export default function AppRoot() {
   const [employeeToDeleteId, setEmployeeToDeleteId] = useState('');
   const [historyEmployeeId, setHistoryEmployeeId] = useState('');
   const [expandedPaymentMonths, setExpandedPaymentMonths] = useState<Record<string, boolean>>({});
+  const [paymentToEditId, setPaymentToEditId] = useState('');
+  const [paymentToDeleteId, setPaymentToDeleteId] = useState('');
   const [dailyRate, setDailyRate] = useState('2500');
   const [paymentEmployeeId, setPaymentEmployeeId] = useState('');
   const [paymentKind, setPaymentKind] = useState<PaymentKind>('payment');
@@ -143,6 +147,14 @@ export default function AppRoot() {
     () => state.employees.find((employee) => employee.id === historyEmployeeId),
     [historyEmployeeId, state.employees],
   );
+  const paymentToEdit = useMemo(
+    () => state.payments.find((payment) => payment.id === paymentToEditId),
+    [paymentToEditId, state.payments],
+  );
+  const paymentToDelete = useMemo(
+    () => state.payments.find((payment) => payment.id === paymentToDeleteId),
+    [paymentToDeleteId, state.payments],
+  );
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
 
   useEffect(() => {
@@ -162,14 +174,16 @@ export default function AppRoot() {
     }
   }
 
-  async function mutate(action: ApiAction) {
+  async function mutate(action: ApiAction): Promise<boolean> {
     setSaving(true);
     setError('');
 
     try {
       setState(await sendAction(action));
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Не удалось сохранить в Neon.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -183,7 +197,11 @@ export default function AppRoot() {
       return;
     }
 
-    await mutate({ action: 'addEmployee', name: employeeName.trim(), dailyRate: rate });
+    const saved = await mutate({ action: 'addEmployee', name: employeeName.trim(), dailyRate: rate });
+    if (!saved) {
+      return;
+    }
+
     setEmployeeName('');
     setDailyRate('2500');
     setDialog(null);
@@ -200,7 +218,11 @@ export default function AppRoot() {
       return;
     }
 
-    await mutate({ action: 'updateLocation', name: locationName.trim() });
+    const saved = await mutate({ action: 'updateLocation', name: locationName.trim() });
+    if (!saved) {
+      return;
+    }
+
     setDialog(null);
   }
 
@@ -219,7 +241,7 @@ export default function AppRoot() {
       return;
     }
 
-    await mutate({
+    const saved = await mutate({
       action: 'addPayment',
       employeeId,
       amount,
@@ -227,11 +249,11 @@ export default function AppRoot() {
       kind: paymentKind,
       comment: paymentComment.trim(),
     });
-    setPaymentAmount('');
-    setPaymentComment('');
-    setPaymentEmployeeId('');
-    setPaymentKind('payment');
-    setPaymentDateText(formatDate(selectedDate));
+    if (!saved) {
+      return;
+    }
+
+    resetPaymentForm();
     setDialog(null);
   }
 
@@ -253,14 +275,88 @@ export default function AppRoot() {
     }));
   }
 
+  function openEditPayment(payment: SalaryPayment) {
+    setPaymentToEditId(payment.id);
+    setPaymentKind(payment.kind);
+    setPaymentAmount(String(payment.amount));
+    setPaymentComment(payment.comment);
+    setPaymentDateText(formatDate(payment.paidAt));
+    setDialog('editPayment');
+  }
+
+  function openDeletePayment(payment: SalaryPayment) {
+    setPaymentToDeleteId(payment.id);
+    setDialog('deletePayment');
+  }
+
+  async function updateSelectedPayment() {
+    const amount = Number(paymentAmount);
+    const paidAt = parseDateInput(paymentDateText);
+
+    if (!paymentToEdit || !Number.isFinite(amount) || amount <= 0) {
+      setError('Укажи сумму выплаты.');
+      return;
+    }
+
+    if (!paidAt) {
+      setError('Укажи дату в формате ДД.ММ.ГГГГ.');
+      return;
+    }
+
+    const saved = await mutate({
+      action: 'updatePayment',
+      id: paymentToEdit.id,
+      employeeId: paymentToEdit.employeeId,
+      amount,
+      paidAt,
+      kind: paymentKind,
+      comment: paymentComment.trim(),
+    });
+    if (!saved) {
+      return;
+    }
+
+    resetPaymentForm();
+    setDialog('employeePayments');
+  }
+
+  async function deleteSelectedPayment() {
+    if (!paymentToDelete) {
+      return;
+    }
+
+    const deleted = await mutate({
+      action: 'deletePayment',
+      id: paymentToDelete.id,
+      employeeId: paymentToDelete.employeeId,
+    });
+    if (!deleted) {
+      return;
+    }
+
+    setPaymentToDeleteId('');
+    setDialog('employeePayments');
+  }
+
+  function resetPaymentForm() {
+    setPaymentAmount('');
+    setPaymentComment('');
+    setPaymentEmployeeId('');
+    setPaymentKind('payment');
+    setPaymentDateText(formatDate(selectedDate));
+    setPaymentToEditId('');
+  }
+
   function openAssignment(date: string) {
     setSelectedDate(date);
     setDialog('assign');
   }
 
   async function toggleShiftAndClose(employeeId: string) {
-    await mutate({ action: 'toggleShift', employeeId, date: selectedDate });
-    setDialog(null);
+    const saved = await mutate({ action: 'toggleShift', employeeId, date: selectedDate });
+    if (saved) {
+      setDialog(null);
+    }
   }
 
   async function archiveEmployee(employeeId: string) {
@@ -277,7 +373,11 @@ export default function AppRoot() {
       return;
     }
 
-    await mutate({ action: 'deleteEmployee', employeeId: employeeToDeleteId });
+    const deleted = await mutate({ action: 'deleteEmployee', employeeId: employeeToDeleteId });
+    if (!deleted) {
+      return;
+    }
+
     setEmployeeToDeleteId('');
     setDialog('employees');
   }
@@ -637,8 +737,115 @@ export default function AppRoot() {
               employee={historyEmployee}
               expandedMonths={expandedPaymentMonths}
               onToggleMonth={togglePaymentMonth}
+              onEditPayment={openEditPayment}
+              onDeletePayment={openDeletePayment}
             />
           ) : null}
+        </Dialog>
+
+        <Dialog
+          visible={dialog === 'editPayment' && Boolean(paymentToEdit)}
+          title="Изменить запись"
+          closeTestID="close-edit-payment"
+          onClose={() => {
+            resetPaymentForm();
+            setDialog('employeePayments');
+          }}
+        >
+          <View style={styles.paymentEditEmployee}>
+            <Text style={styles.fieldLabel}>Сотрудник</Text>
+            <Text style={styles.employeeName}>{historyEmployee?.name ?? 'Сотрудник'}</Text>
+          </View>
+          <View style={styles.paymentTypeRow}>
+            <Pressable
+              style={[styles.paymentTypeButton, paymentKind === 'payment' && styles.paymentTypeButtonActive]}
+              onPress={() => setPaymentKind('payment')}
+              testID="edit-payment-kind-payment"
+            >
+              <Text
+                style={[
+                  styles.paymentTypeText,
+                  paymentKind === 'payment' && styles.paymentTypeTextActive,
+                ]}
+              >
+                Выплата
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.paymentTypeButton, paymentKind === 'deduction' && styles.paymentTypeButtonDanger]}
+              onPress={() => setPaymentKind('deduction')}
+              testID="edit-payment-kind-deduction"
+            >
+              <Text
+                style={[
+                  styles.paymentTypeText,
+                  paymentKind === 'deduction' && styles.paymentTypeTextDanger,
+                ]}
+              >
+                Удержание
+              </Text>
+            </Pressable>
+          </View>
+          <Field
+            label="Дата, ДД.ММ.ГГГГ"
+            value={paymentDateText}
+            onChangeText={setPaymentDateText}
+            placeholder="26.05.2026"
+            testID="edit-payment-date"
+          />
+          <Field
+            label="Сумма, ₽"
+            value={paymentAmount}
+            onChangeText={setPaymentAmount}
+            keyboardType="numeric"
+            testID="edit-payment-amount"
+          />
+          <Field
+            label="Комментарий"
+            value={paymentComment}
+            onChangeText={setPaymentComment}
+            placeholder={paymentKind === 'deduction' ? 'штраф, удержание' : 'нал, СБП, аванс, зарплата'}
+            maxLength={80}
+            testID="edit-payment-comment"
+          />
+          <Pressable style={styles.primaryButton} onPress={updateSelectedPayment} testID="save-edit-payment">
+            <Text style={styles.primaryButtonText}>Сохранить изменения</Text>
+          </Pressable>
+        </Dialog>
+
+        <Dialog
+          visible={dialog === 'deletePayment' && Boolean(paymentToDelete)}
+          title="Удалить запись?"
+          closeTestID="close-delete-payment"
+          onClose={() => {
+            setPaymentToDeleteId('');
+            setDialog('employeePayments');
+          }}
+        >
+          <Text style={styles.warningText}>
+            Это удалит только выбранную выплату или удержание. Смены и сотрудники останутся на месте.
+          </Text>
+          {paymentToDelete ? (
+            <View style={styles.deletePaymentPreview}>
+              <Text style={styles.historyDate}>{formatDate(paymentToDelete.paidAt)}</Text>
+              <Text
+                style={[
+                  styles.historyAmount,
+                  paymentToDelete.kind === 'deduction' && styles.historyAmountDeduction,
+                ]}
+              >
+                {paymentToDelete.kind === 'deduction'
+                  ? `− ${formatMoney(paymentToDelete.amount)}`
+                  : formatMoney(paymentToDelete.amount)}
+              </Text>
+              {paymentToDelete.comment ? (
+                <Text style={styles.historyComment}>{paymentToDelete.comment}</Text>
+              ) : null}
+            </View>
+          ) : null}
+          <Pressable style={styles.dangerButton} onPress={deleteSelectedPayment} testID="confirm-delete-payment">
+            <Text style={styles.dangerButtonText}>Удалить запись</Text>
+          </Pressable>
         </Dialog>
       </View>
     </SafeAreaView>
@@ -820,11 +1027,15 @@ function PaymentHistory({
   employee,
   expandedMonths,
   onToggleMonth,
+  onEditPayment,
+  onDeletePayment,
 }: {
   state: AppState;
   employee: Employee;
   expandedMonths: Record<string, boolean>;
   onToggleMonth: (month: string, defaultExpanded: boolean) => void;
+  onEditPayment: (payment: SalaryPayment) => void;
+  onDeletePayment: (payment: SalaryPayment) => void;
 }) {
   const groups = getPaymentMonthGroups(state, employee.id);
 
@@ -882,14 +1093,38 @@ function PaymentHistory({
                         </Text>
                       ) : null}
                     </View>
-                    <Text
-                      style={[
-                        styles.historyAmount,
-                        payment.kind === 'deduction' && styles.historyAmountDeduction,
-                      ]}
-                    >
-                      {payment.kind === 'deduction' ? `− ${formatMoney(payment.amount)}` : formatMoney(payment.amount)}
-                    </Text>
+                    <View style={styles.historySideCell}>
+                      <Text
+                        style={[
+                          styles.historyAmount,
+                          payment.kind === 'deduction' && styles.historyAmountDeduction,
+                        ]}
+                      >
+                        {payment.kind === 'deduction'
+                          ? `− ${formatMoney(payment.amount)}`
+                          : formatMoney(payment.amount)}
+                      </Text>
+                      <View style={styles.historyActions}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Изменить запись"
+                          style={styles.historyIconButton}
+                          onPress={() => onEditPayment(payment)}
+                          testID={`edit-payment-${payment.id}`}
+                        >
+                          <PencilLine size={14} color={colors.text} />
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Удалить запись"
+                          style={[styles.historyIconButton, styles.historyDeleteButton]}
+                          onPress={() => onDeletePayment(payment)}
+                          testID={`delete-payment-${payment.id}`}
+                        >
+                          <Trash2 size={14} color={colors.dangerText} />
+                        </Pressable>
+                      </View>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -1689,6 +1924,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  paymentEditEmployee: {
+    gap: 4,
+  },
+  deletePaymentPreview: {
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 4,
+  },
   historyScroll: {
     maxHeight: 460,
   },
@@ -1756,6 +2002,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: 2,
   },
+  historySideCell: {
+    minWidth: 102,
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   historyDate: {
     fontFamily: appFont,
     color: colors.text,
@@ -1781,7 +2032,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   historyAmount: {
-    minWidth: 96,
     fontFamily: appFont,
     color: colors.text,
     fontSize: 15,
@@ -1790,6 +2040,24 @@ const styles = StyleSheet.create({
   },
   historyAmountDeduction: {
     color: colors.dangerText,
+  },
+  historyActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  historyIconButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyDeleteButton: {
+    backgroundColor: colors.dangerBg,
+    borderColor: colors.dangerBorder,
   },
   primaryButton: {
     minHeight: 50,

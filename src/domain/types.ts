@@ -58,5 +58,15 @@ export type ApiAction =
       kind?: PaymentKind;
       comment?: string;
     }
+  | {
+      action: 'updatePayment';
+      id: string;
+      employeeId: string;
+      amount: number;
+      paidAt: string;
+      kind?: PaymentKind;
+      comment?: string;
+    }
+  | { action: 'deletePayment'; id: string; employeeId: string }
   | { action: 'archiveEmployee'; employeeId: string }
   | { action: 'deleteEmployee'; employeeId: string };

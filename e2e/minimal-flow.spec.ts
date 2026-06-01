@@ -101,6 +101,32 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
       };
     }
 
+    if (action.action === 'updatePayment') {
+      serverState = {
+        ...serverState,
+        payments: serverState.payments.map((payment) =>
+          payment.id === action.id && payment.employeeId === action.employeeId
+            ? {
+                ...payment,
+                amount: action.amount,
+                paidAt: action.paidAt,
+                kind: action.kind ?? 'payment',
+                comment: action.comment ?? '',
+              }
+            : payment,
+        ),
+      };
+    }
+
+    if (action.action === 'deletePayment') {
+      serverState = {
+        ...serverState,
+        payments: serverState.payments.filter(
+          (payment) => payment.id !== action.id || payment.employeeId !== action.employeeId,
+        ),
+      };
+    }
+
     if (action.action === 'archiveEmployee') {
       serverState = {
         ...serverState,
@@ -159,7 +185,19 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText('\u041c\u0430\u0439 2026 \u0433.')).toBeVisible();
   await expect(page.getByText('30.05.2026')).toBeVisible();
   await expect(page.getByText('\u0448\u0442\u0440\u0430\u0444')).toBeVisible();
+  await page.getByTestId('edit-payment-pay-new').click();
+  await page.getByTestId('edit-payment-date').fill('29.05.2026');
+  await page.getByTestId('edit-payment-amount').fill('200');
+  await page.getByTestId('edit-payment-comment').fill('\u0448\u0442\u0440\u0430\u0444 \u0438\u0441\u043f\u0440.');
+  await page.getByTestId('save-edit-payment').click();
+
+  await expect(page.getByText('29.05.2026')).toBeVisible();
+  await expect(page.getByText('\u0448\u0442\u0440\u0430\u0444 \u0438\u0441\u043f\u0440.')).toBeVisible();
+  await page.getByTestId('delete-payment-pay-new').click();
+  await page.getByTestId('confirm-delete-payment').click();
   await page.getByTestId('close-payment-history').click();
+
+  await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
 
   await page.getByTestId('day-31').click();
   await expect(page.getByTestId(`assign-employee-${ANNA}`)).toBeVisible();
@@ -171,7 +209,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('save-employee').click();
 
   await expect(page.getByText(IRA).first()).toBeVisible();
-  await expect(page.getByText(`4 700 ${RUBLE}`).first()).toBeVisible();
+  await expect(page.getByText(`5 000 ${RUBLE}`).first()).toBeVisible();
 
   await page.getByTestId('open-employees').click();
   await page.getByTestId(`archive-employee-${IRA}`).click();
@@ -179,5 +217,5 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('confirm-delete-employee').click();
 
   await expect(page.getByText(IRA)).toHaveCount(0);
-  await expect(page.getByText(`1 700 ${RUBLE}`).first()).toBeVisible();
+  await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
 });
