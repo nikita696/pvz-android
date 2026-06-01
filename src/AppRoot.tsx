@@ -82,8 +82,8 @@ const colors = {
   accentText: '#102017',
   weekendBg: '#fff7f8',
   weekendBorder: '#f3d7de',
-  holidayBg: '#fff0f3',
-  holidayBorder: '#eebbc7',
+  weekendText: '#b42345',
+  holidayText: '#c2410c',
   dangerBg: '#fff1f3',
   dangerBorder: '#efbdc7',
   dangerText: '#a43d50',
@@ -933,6 +933,8 @@ function CalendarGrid({
                       style={[
                         styles.dayText,
                         selected && styles.dayTextSelected,
+                        dayOff && styles.dayTextOff,
+                        dayOff?.holiday && styles.dayTextHoliday,
                         today && styles.dayTextToday,
                       ]}
                     >
@@ -1515,12 +1517,12 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   dayCellOff: {
-    backgroundColor: colors.weekendBg,
-    borderColor: colors.weekendBorder,
+    backgroundColor: colors.panelSoft,
+    borderColor: colors.border,
   },
   dayCellHoliday: {
-    backgroundColor: colors.holidayBg,
-    borderColor: colors.holidayBorder,
+    backgroundColor: colors.panelSoft,
+    borderColor: colors.border,
   },
   dayCellFilled: {
     borderWidth: 2,
@@ -1550,6 +1552,12 @@ const styles = StyleSheet.create({
   },
   dayTextSelected: {
     color: colors.text,
+  },
+  dayTextOff: {
+    color: colors.weekendText,
+  },
+  dayTextHoliday: {
+    color: colors.holidayText,
   },
   dayTextToday: {
     color: '#ffffff',

@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 import type { AppState, Employee, PaymentKind, SalaryPayment, Shift } from '../src/domain/types';
 
 const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
-const EMPLOYEE_COLORS = ['#0f766e', '#2563eb', '#be185d', '#a16207', '#7c3aed', '#0e7490'];
+const EMPLOYEE_COLORS = ['#be185d', '#0e7490', '#7c3aed', '#047857', '#a16207', '#2563eb'];
 
 export class MissingDatabaseUrlError extends Error {
   constructor() {
