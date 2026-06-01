@@ -201,6 +201,11 @@ export default function AppRoot() {
     setDialog('assign');
   }
 
+  async function toggleShiftAndClose(employeeId: string) {
+    await mutate({ action: 'toggleShift', employeeId, date: selectedDate });
+    setDialog(null);
+  }
+
   async function archiveEmployee(employeeId: string) {
     await mutate({ action: 'archiveEmployee', employeeId });
   }
@@ -354,9 +359,7 @@ export default function AppRoot() {
                   <Pressable
                     key={employee.id}
                     style={[styles.assignmentRow, active && styles.assignmentRowActive]}
-                    onPress={() =>
-                      mutate({ action: 'toggleShift', employeeId: employee.id, date: selectedDate })
-                    }
+                    onPress={() => void toggleShiftAndClose(employee.id)}
                     testID={`assign-employee-${employee.name}`}
                   >
                     <View style={styles.employeeTitleRow}>
