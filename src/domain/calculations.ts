@@ -23,19 +23,18 @@ export function hasShift(state: AppState, employeeId: string, date: string): boo
 }
 
 export function calculateSalary(state: AppState, employee: Employee, month: string): SalarySummary {
-  const workedShifts = state.shifts.filter(
-    (shift) => shift.employeeId === employee.id && isInMonth(shift.date, month),
-  ).length;
-  const monthPayments = state.payments.filter(
-    (payment) => payment.employeeId === employee.id && isInMonth(payment.paidAt, month),
-  );
-  const paid = monthPayments
+  void month;
+
+  const workedShifts = state.shifts.filter((shift) => shift.employeeId === employee.id).length;
+  const employeePayments = state.payments.filter((payment) => payment.employeeId === employee.id);
+  const paid = employeePayments
     .filter((payment) => payment.kind !== 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
-  const deductions = monthPayments
+  const deductions = employeePayments
     .filter((payment) => payment.kind === 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
   const accrued = workedShifts * employee.dailyRate;
+  const paidAndDeductions = paid + deductions;
 
   return {
     employeeId: employee.id,
@@ -44,11 +43,14 @@ export function calculateSalary(state: AppState, employee: Employee, month: stri
     accrued,
     paid,
     deductions,
-    due: Math.max(0, accrued - paid - deductions),
+    paidAndDeductions,
+    due: Math.max(0, accrued - paidAndDeductions),
   };
 }
 
 export function calculateTotalDue(state: AppState, month: string): number {
+  void month;
+
   return state.employees
     .filter((employee) => employee.active)
     .reduce((sum, employee) => sum + calculateSalary(state, employee, month).due, 0);

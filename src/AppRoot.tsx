@@ -470,7 +470,7 @@ export default function AppRoot() {
               <View style={styles.sectionHeader}>
                 <View>
                   <Text style={styles.sectionTitle}>Зарплата</Text>
-                  <Text style={styles.muted}>Смены × ставка в день − уже выплачено</Text>
+                  <Text style={styles.muted}>Все смены × ставка − выплаты и штрафы</Text>
                 </View>
                 <Pressable
                   style={styles.smallButton}
@@ -483,7 +483,7 @@ export default function AppRoot() {
                 </Pressable>
               </View>
               <View style={styles.totalCard}>
-                <Text style={styles.muted}>К выплате за месяц</Text>
+                <Text style={styles.muted}>Остаток к выплате</Text>
                 <Text style={styles.totalMoney}>{formatMoney(totalDue)}</Text>
               </View>
 
@@ -1008,7 +1008,7 @@ function SalaryCard({
           <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
         </View>
         <Text style={styles.muted}>
-          {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − выпл. {formatMoney(salary.paid)}
+          {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − {formatMoney(salary.paidAndDeductions)}
         </Text>
         {salary.deductions > 0 ? (
           <Text style={styles.deductionLine}>Удержано {formatMoney(salary.deductions)}</Text>

@@ -43,6 +43,7 @@ export interface SalarySummary {
   accrued: number;
   paid: number;
   deductions: number;
+  paidAndDeductions: number;
   due: number;
 }
 

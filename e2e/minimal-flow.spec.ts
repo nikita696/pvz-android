@@ -184,7 +184,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId(`open-payment-history-${ANNA}`).click();
   await expect(page.getByText('\u041c\u0430\u0439 2026 \u0433.')).toBeVisible();
   await expect(page.getByText('30.05.2026')).toBeVisible();
-  await expect(page.getByText('\u0448\u0442\u0440\u0430\u0444')).toBeVisible();
+  await expect(page.getByText('\u0448\u0442\u0440\u0430\u0444', { exact: true })).toBeVisible();
   await page.getByTestId('edit-payment-pay-new').click();
   await page.getByTestId('edit-payment-date').fill('29.05.2026');
   await page.getByTestId('edit-payment-amount').fill('200');
