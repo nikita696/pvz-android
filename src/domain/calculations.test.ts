@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculateSalary, calculateTotalDue, getShiftCountByDate, hasShift } from './calculations';
+import {
+  calculateSalary,
+  calculateTotalDue,
+  getEmployeeMonthShiftCounts,
+  getShiftCountByDate,
+  hasShift,
+} from './calculations';
 import type { AppState } from './types';
 
 const state: AppState = {
@@ -99,5 +105,12 @@ describe('minimal payroll formula', () => {
 
   it('ignores archived employees in calendar shift counters', () => {
     expect(getShiftCountByDate(state, '2026-05-02')).toBe(1);
+  });
+
+  it('counts monthly employee shifts as total and worked through today', () => {
+    expect(getEmployeeMonthShiftCounts(state, 'emp-1', '2026-05', '2026-05-11')).toEqual({
+      total: 4,
+      worked: 3,
+    });
   });
 });

@@ -29,6 +29,7 @@ import {
   calculateSalary,
   calculateTotalDue,
   formatMoney,
+  getEmployeeMonthShiftCounts,
   hasShift,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
@@ -468,25 +469,34 @@ export default function AppRoot() {
 
               {activeEmployees.length ? (
                 selectedShiftEmployees.length ? (
-                  selectedShiftEmployees.map((employee) => (
-                    <View
-                      key={employee.id}
-                      style={[
-                        styles.employeeShiftRow,
-                        styles.employeeShiftRowActive,
-                        { borderLeftColor: employee.color },
-                      ]}
-                    >
-                      <View>
-                        <View style={styles.employeeTitleRow}>
-                          <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
-                          <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+                  selectedShiftEmployees.map((employee) => {
+                    const monthShiftCounts = getEmployeeMonthShiftCounts(state, employee.id, selectedMonth);
+
+                    return (
+                      <View
+                        key={employee.id}
+                        style={[
+                          styles.employeeShiftRow,
+                          styles.employeeShiftRowActive,
+                          { borderLeftColor: employee.color },
+                        ]}
+                      >
+                        <View style={styles.employeeShiftInfo}>
+                          <View style={styles.employeeTitleRow}>
+                            <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                            <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+                          </View>
+                          <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
                         </View>
-                        <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
+                        <View style={styles.monthShiftSummary}>
+                          <Text style={[styles.monthShiftSummaryValue, { color: employee.color }]}>
+                            {monthShiftCounts.total} / {monthShiftCounts.worked}
+                          </Text>
+                          <Text style={styles.monthShiftSummaryLabel}>всего / отраб.</Text>
+                        </View>
                       </View>
-                      <Text style={[styles.shiftStatus, { color: employee.color }]}>На смене</Text>
-                    </View>
-                  ))
+                    );
+                  })
                 ) : (
                   <EmptyState text="В этот день никого нет на смене." />
                 )
@@ -1680,6 +1690,28 @@ const styles = StyleSheet.create({
   employeeShiftRowActive: {
     backgroundColor: colors.accentSoft,
     borderColor: '#c7e7d5',
+  },
+  employeeShiftInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  monthShiftSummary: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  monthShiftSummaryValue: {
+    fontFamily: appFont,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '900',
+  },
+  monthShiftSummaryLabel: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '800',
   },
   employeeName: {
     fontFamily: appFont,

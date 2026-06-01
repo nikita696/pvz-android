@@ -25,6 +25,22 @@ export function getMonthShifts(state: AppState, month: string): Shift[] {
   return state.shifts.filter((shift) => isInMonth(shift.date, month));
 }
 
+export function getEmployeeMonthShiftCounts(
+  state: AppState,
+  employeeId: string,
+  month: string,
+  cutoffDate = isoDateFromLocalDate(),
+): { total: number; worked: number } {
+  const monthShifts = state.shifts.filter(
+    (shift) => shift.employeeId === employeeId && isInMonth(shift.date, month),
+  );
+
+  return {
+    total: monthShifts.length,
+    worked: monthShifts.filter((shift) => shift.date <= cutoffDate).length,
+  };
+}
+
 export function hasShift(state: AppState, employeeId: string, date: string): boolean {
   return state.shifts.some((shift) => shift.employeeId === employeeId && shift.date === date);
 }
