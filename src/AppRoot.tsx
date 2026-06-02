@@ -29,6 +29,7 @@ import {
   calculateSalary,
   calculateTotalDue,
   formatMoney,
+  getDayNoteByDate,
   getEmployeeMonthShiftCounts,
   hasShift,
 } from './domain/calculations';
@@ -97,6 +98,7 @@ type DialogName =
   | 'editPayment'
   | 'employeePayments'
   | 'employees'
+  | 'dayNote'
   | 'location'
   | 'payment'
   | null;
@@ -125,6 +127,9 @@ export default function AppRoot() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentComment, setPaymentComment] = useState('');
   const [paymentDateText, setPaymentDateText] = useState(formatDate(TODAY));
+  const [dayNoteText, setDayNoteText] = useState('');
+  const [selectedDayEmployeesOpen, setSelectedDayEmployeesOpen] = useState(false);
+  const [expandedSelectedDayEmployees, setExpandedSelectedDayEmployees] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -146,11 +151,8 @@ export default function AppRoot() {
       ),
     [activeEmployees, state.shifts, selectedDate],
   );
-  const selectedShiftEmployees = useMemo(
-    () => activeEmployees.filter((employee) => hasShift(state, employee.id, selectedDate)),
-    [activeEmployees, selectedDate, state],
-  );
   const selectedDayOff = useMemo(() => getDayOffInfo(selectedDate), [selectedDate]);
+  const selectedDayNote = useMemo(() => getDayNoteByDate(state, selectedDate), [state, selectedDate]);
   const historyEmployee = useMemo(
     () => state.employees.find((employee) => employee.id === historyEmployeeId),
     [historyEmployeeId, state.employees],
@@ -168,6 +170,11 @@ export default function AppRoot() {
   useEffect(() => {
     void loadState();
   }, []);
+
+  useEffect(() => {
+    setSelectedDayEmployeesOpen(false);
+    setExpandedSelectedDayEmployees({});
+  }, [selectedDate]);
 
   async function loadState() {
     setLoading(true);
@@ -270,6 +277,27 @@ export default function AppRoot() {
     setDialog('payment');
   }
 
+  function openDayNoteDialog() {
+    setDayNoteText(selectedDayNote);
+    setDialog('dayNote');
+  }
+
+  async function saveDayNote() {
+    const comment = dayNoteText.trim();
+
+    if (comment.length > 160) {
+      setError('Комментарий не длиннее 160 символов.');
+      return;
+    }
+
+    const saved = await mutate({ action: 'saveDayNote', date: selectedDate, comment });
+    if (!saved) {
+      return;
+    }
+
+    setDialog(null);
+  }
+
   function openEmployeePayments(employeeId: string) {
     setHistoryEmployeeId(employeeId);
     setExpandedPaymentMonths({});
@@ -280,6 +308,13 @@ export default function AppRoot() {
     setExpandedPaymentMonths((current) => ({
       ...current,
       [month]: !(current[month] ?? defaultExpanded),
+    }));
+  }
+
+  function toggleSelectedDayEmployee(employeeId: string) {
+    setExpandedSelectedDayEmployees((current) => ({
+      ...current,
+      [employeeId]: !current[employeeId],
     }));
   }
 
@@ -467,42 +502,102 @@ export default function AppRoot() {
                 </View>
               </View>
 
-              {activeEmployees.length ? (
-                selectedShiftEmployees.length ? (
-                  selectedShiftEmployees.map((employee) => {
-                    const monthShiftCounts = getEmployeeMonthShiftCounts(state, employee.id, selectedMonth);
+              <Pressable style={styles.dayNoteCard} onPress={openDayNoteDialog} testID="open-day-note">
+                <View style={styles.dayNoteHeader}>
+                  <Text style={styles.dayNoteLabel}>Комментарий ко дню</Text>
+                  <PencilLine size={15} color={colors.accentStrong} />
+                </View>
+                <Text style={[styles.dayNoteText, !selectedDayNote && styles.dayNotePlaceholder]}>
+                  {selectedDayNote || 'Добавить комментарий'}
+                </Text>
+              </Pressable>
 
-                    return (
-                      <View
-                        key={employee.id}
-                        style={[
-                          styles.employeeShiftRow,
-                          styles.employeeShiftRowActive,
-                          { borderLeftColor: employee.color },
-                        ]}
-                      >
-                        <View style={styles.employeeShiftInfo}>
-                          <View style={styles.employeeTitleRow}>
-                            <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
-                            <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+              <View style={styles.selectedEmployeesPanel}>
+                <Pressable
+                  accessibilityRole="button"
+                  style={styles.selectedEmployeesHeader}
+                  onPress={() => setSelectedDayEmployeesOpen((current) => !current)}
+                  testID="toggle-selected-day-employees"
+                >
+                  <View style={styles.selectedEmployeesTitleRow}>
+                    {selectedDayEmployeesOpen ? (
+                      <ChevronDown size={18} color={colors.accentText} />
+                    ) : (
+                      <ChevronRight size={18} color={colors.accentText} />
+                    )}
+                    <Text style={styles.selectedEmployeesTitle}>Сотрудники</Text>
+                  </View>
+                  <Text style={styles.selectedEmployeesCount}>{activeEmployees.length}</Text>
+                </Pressable>
+
+                {selectedDayEmployeesOpen ? (
+                  activeEmployees.length ? (
+                    <View style={styles.selectedEmployeesList}>
+                      {activeEmployees.map((employee) => {
+                        const monthShiftCounts = getEmployeeMonthShiftCounts(state, employee.id, selectedMonth);
+                        const assigned = hasShift(state, employee.id, selectedDate);
+                        const expanded = Boolean(expandedSelectedDayEmployees[employee.id]);
+
+                        return (
+                          <View key={employee.id} style={styles.selectedEmployeeItem}>
+                            <Pressable
+                              accessibilityRole="button"
+                              style={styles.selectedEmployeeHeader}
+                              onPress={() => toggleSelectedDayEmployee(employee.id)}
+                              testID={`toggle-selected-day-employee-${employee.name}`}
+                            >
+                              <View style={styles.employeeTitleRow}>
+                                <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                                <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+                              </View>
+                              <View style={styles.selectedEmployeeMeta}>
+                                <Text
+                                  style={[
+                                    styles.selectedEmployeeStatus,
+                                    assigned ? styles.selectedEmployeeStatusActive : styles.selectedEmployeeStatusMuted,
+                                  ]}
+                                >
+                                  {assigned ? 'на смене' : 'нет смены'}
+                                </Text>
+                                {expanded ? (
+                                  <ChevronDown size={16} color={colors.muted} />
+                                ) : (
+                                  <ChevronRight size={16} color={colors.muted} />
+                                )}
+                              </View>
+                            </Pressable>
+
+                            {expanded ? (
+                              <View style={styles.selectedEmployeeStats}>
+                                <View style={styles.selectedEmployeeStat}>
+                                  <Text style={styles.selectedEmployeeStatLabel}>Всего в месяце</Text>
+                                  <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
+                                    {monthShiftCounts.total}
+                                  </Text>
+                                </View>
+                                <View style={styles.selectedEmployeeStat}>
+                                  <Text style={styles.selectedEmployeeStatLabel}>Отработано</Text>
+                                  <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
+                                    {monthShiftCounts.worked}
+                                  </Text>
+                                </View>
+                                <View style={styles.selectedEmployeeStat}>
+                                  <Text style={styles.selectedEmployeeStatLabel}>В выбранный день</Text>
+                                  <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
+                                    {assigned ? 'да' : 'нет'}
+                                  </Text>
+                                </View>
+                              </View>
+                            ) : null}
                           </View>
-                          <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
-                        </View>
-                        <View style={styles.monthShiftSummary}>
-                          <Text style={[styles.monthShiftSummaryValue, { color: employee.color }]}>
-                            {monthShiftCounts.total} / {monthShiftCounts.worked}
-                          </Text>
-                          <Text style={styles.monthShiftSummaryLabel}>всего / отраб.</Text>
-                        </View>
-                      </View>
-                    );
-                  })
-                ) : (
-                  <EmptyState text="В этот день никого нет на смене." />
-                )
-              ) : (
-                <EmptyState text="Добавь сотрудников в отдельном окне, потом назначай смены здесь." />
-              )}
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <EmptyState text="Добавь сотрудников в отдельном окне, потом назначай смены здесь." />
+                  )
+                ) : null}
+              </View>
             </View>
 
             <View style={styles.section}>
@@ -587,6 +682,22 @@ export default function AppRoot() {
               <Text style={styles.muted}>Сначала добавь сотрудника.</Text>
             )}
           </View>
+        </Dialog>
+
+        <Dialog visible={dialog === 'dayNote'} title="Комментарий ко дню" onClose={() => setDialog(null)}>
+          <TextInput
+            style={[styles.input, styles.dayNoteInput]}
+            value={dayNoteText}
+            onChangeText={setDayNoteText}
+            placeholder="Например: замена, опоздал, инвентаризация"
+            placeholderTextColor="#9aa399"
+            multiline
+            maxLength={160}
+            testID="day-note-comment"
+          />
+          <Pressable style={styles.primaryButton} onPress={saveDayNote} testID="save-day-note">
+            <Text style={styles.primaryButtonText}>Сохранить комментарий</Text>
+          </Pressable>
         </Dialog>
 
         <Dialog visible={dialog === 'location'} title="Название ПВЗ" onClose={() => setDialog(null)}>
@@ -1674,6 +1785,145 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '800',
   },
+  dayNoteCard: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 5,
+  },
+  dayNoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  dayNoteLabel: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '900',
+  },
+  dayNoteText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  dayNotePlaceholder: {
+    color: colors.muted,
+  },
+  selectedEmployeesPanel: {
+    borderRadius: 8,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  selectedEmployeesHeader: {
+    minHeight: 54,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: colors.accentSoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  selectedEmployeesTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  selectedEmployeesTitle: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '900',
+  },
+  selectedEmployeesCount: {
+    minWidth: 30,
+    borderRadius: 15,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    backgroundColor: colors.panel,
+    color: colors.accentText,
+    overflow: 'hidden',
+    textAlign: 'center',
+    fontFamily: appFont,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '900',
+  },
+  selectedEmployeesList: {
+    padding: 8,
+    gap: 8,
+  },
+  selectedEmployeeItem: {
+    borderRadius: 8,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  selectedEmployeeHeader: {
+    minHeight: 50,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  selectedEmployeeMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    flexShrink: 0,
+  },
+  selectedEmployeeStatus: {
+    fontFamily: appFont,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '900',
+  },
+  selectedEmployeeStatusActive: {
+    color: colors.accentStrong,
+  },
+  selectedEmployeeStatusMuted: {
+    color: colors.muted,
+  },
+  selectedEmployeeStats: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    gap: 7,
+  },
+  selectedEmployeeStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  selectedEmployeeStatLabel: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  selectedEmployeeStatValue: {
+    fontFamily: appFont,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '900',
+  },
   employeeShiftRow: {
     minHeight: 72,
     borderRadius: 8,
@@ -2028,6 +2278,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     fontSize: 15,
     fontWeight: '700',
+  },
+  dayNoteInput: {
+    minHeight: 96,
+    paddingTop: 12,
+    paddingBottom: 12,
+    textAlignVertical: 'top',
   },
   paymentEditEmployee: {
     gap: 4,

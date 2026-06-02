@@ -8,6 +8,7 @@ const ANNA = '\u0410\u043d\u043d\u0430';
 const IRA = '\u0418\u0440\u0430';
 const RUBLE = '\u20bd';
 const VISIBLE_DATE = '2026-05-31';
+const DAY_NOTE = '\u0437\u0430\u043c\u0435\u043d\u0430';
 
 test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.addInitScript((visibleDate) => {
@@ -50,6 +51,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         comment: '\u0430\u0432\u0430\u043d\u0441',
       },
     ],
+    dayNotes: [],
   };
 
   await page.route('**/api/state', async (route) => {
@@ -98,6 +100,23 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
             comment: action.comment ?? '',
           },
         ],
+      };
+    }
+
+    if (action.action === 'saveDayNote') {
+      const comment = action.comment.trim();
+      serverState = {
+        ...serverState,
+        dayNotes: comment
+          ? [
+              ...serverState.dayNotes.filter((note) => note.date !== action.date),
+              {
+                date: action.date,
+                comment,
+                updatedAt: '2026-05-31T12:00:00.000Z',
+              },
+            ]
+          : serverState.dayNotes.filter((note) => note.date !== action.date),
       };
     }
 
@@ -164,6 +183,18 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText(LOCATION)).toBeVisible();
   await expect(page.getByText('\u043c\u0430\u0439 2026')).toBeVisible();
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
+  await expect(page.getByTestId('toggle-selected-day-employees')).toBeVisible();
+
+  await page.getByTestId('toggle-selected-day-employees').click();
+  await expect(page.getByTestId(`toggle-selected-day-employee-${ANNA}`)).toBeVisible();
+  await page.getByTestId(`toggle-selected-day-employee-${ANNA}`).click();
+  await expect(page.getByText('\u0412\u0441\u0435\u0433\u043e \u0432 \u043c\u0435\u0441\u044f\u0446\u0435')).toBeVisible();
+  await expect(page.getByText('\u0412 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0434\u0435\u043d\u044c')).toBeVisible();
+
+  await page.getByTestId('open-day-note').click();
+  await page.getByTestId('day-note-comment').fill(DAY_NOTE);
+  await page.getByTestId('save-day-note').click();
+  await expect(page.getByTestId('open-day-note').getByText(DAY_NOTE)).toBeVisible();
 
   await page.getByTestId('open-location-editor').click();
   await page.getByTestId('location-name').fill(UPDATED_LOCATION);

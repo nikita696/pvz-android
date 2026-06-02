@@ -8,6 +8,7 @@ import {
   deletePayment,
   deleteArchivedEmployee,
   getState,
+  saveDayNote,
   toggleShift,
   updateLocationName,
   updatePayment,
@@ -103,6 +104,17 @@ async function applyAction(body: ApiAction) {
     }
 
     await toggleShift(body.employeeId, body.date);
+    return;
+  }
+
+  if (body.action === 'saveDayNote') {
+    const comment = body.comment.trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date) || comment.length > 160) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await saveDayNote(body.date, comment);
     return;
   }
 

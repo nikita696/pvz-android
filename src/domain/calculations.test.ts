@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculateSalary,
   calculateTotalDue,
+  getDayNoteByDate,
   getEmployeeMonthShiftCounts,
   getShiftCountByDate,
   hasShift,
@@ -79,6 +80,13 @@ const state: AppState = {
       comment: 'будущий штраф',
     },
   ],
+  dayNotes: [
+    {
+      date: '2026-05-11',
+      comment: 'замена',
+      updatedAt: '2026-05-11T12:00:00.000Z',
+    },
+  ],
 };
 
 describe('minimal payroll formula', () => {
@@ -112,5 +120,10 @@ describe('minimal payroll formula', () => {
       total: 4,
       worked: 3,
     });
+  });
+
+  it('finds day notes by selected date', () => {
+    expect(getDayNoteByDate(state, '2026-05-11')).toBe('замена');
+    expect(getDayNoteByDate(state, '2026-05-12')).toBe('');
   });
 });

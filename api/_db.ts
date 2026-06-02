@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 
-import type { AppState, Employee, PaymentKind, SalaryPayment, Shift } from '../src/domain/types';
+import type { AppState, DayNote, Employee, PaymentKind, SalaryPayment, Shift } from '../src/domain/types';
 
 const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
 const EMPLOYEE_COLORS = ['#7c3aed', '#0e7490', '#b45309', '#047857', '#4f46e5', '#2563eb'];
@@ -60,6 +60,13 @@ export async function ensureSchema() {
     )
   `;
   await sql`
+    create table if not exists day_notes (
+      work_date date primary key,
+      note text not null default '',
+      updated_at timestamptz not null default now()
+    )
+  `;
+  await sql`
     alter table salary_payments
     add column if not exists kind text not null default 'payment'
   `;
@@ -78,7 +85,7 @@ export async function getState(): Promise<AppState> {
   const sql = getSql();
   await ensureSchema();
 
-  const [locationRows, employeeRows, shiftRows, paymentRows] = await Promise.all([
+  const [locationRows, employeeRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
     sql`select id, name from locations where id = ${DEFAULT_LOCATION.id} limit 1`,
     sql`
       select id, name, daily_rate, active, created_at
@@ -94,6 +101,11 @@ export async function getState(): Promise<AppState> {
       select id, employee_id, amount, kind, note, to_char(paid_at, 'YYYY-MM-DD') as paid_at
       from salary_payments
       order by paid_at asc, created_at asc
+    `,
+    sql`
+      select to_char(work_date, 'YYYY-MM-DD') as work_date, note, updated_at
+      from day_notes
+      order by work_date asc
     `,
   ]);
 
@@ -122,6 +134,11 @@ export async function getState(): Promise<AppState> {
       paidAt: String(row.paid_at),
       kind: row.kind === 'deduction' ? 'deduction' : 'payment',
       comment: String(row.note ?? ''),
+    })),
+    dayNotes: dayNoteRows.map((row): DayNote => ({
+      date: String(row.work_date),
+      comment: String(row.note ?? ''),
+      updatedAt: new Date(String(row.updated_at)).toISOString(),
     })),
   };
 }
@@ -188,6 +205,28 @@ export async function toggleShift(employeeId: string, date: string) {
   await sql`
     insert into shifts (id, employee_id, work_date)
     values (${crypto.randomUUID()}, ${employeeId}, ${date})
+  `;
+}
+
+export async function saveDayNote(date: string, comment: string) {
+  const sql = getSql();
+  await ensureSchema();
+  const note = comment.trim();
+
+  if (!note) {
+    await sql`
+      delete from day_notes
+      where work_date = ${date}
+    `;
+    return;
+  }
+
+  await sql`
+    insert into day_notes (work_date, note)
+    values (${date}, ${note})
+    on conflict (work_date) do update
+    set note = excluded.note,
+        updated_at = now()
   `;
 }
 

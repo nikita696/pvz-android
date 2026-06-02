@@ -29,11 +29,18 @@ export interface SalaryPayment {
   comment: string;
 }
 
+export interface DayNote {
+  date: string;
+  comment: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   location: Location;
   employees: Employee[];
   shifts: Shift[];
   payments: SalaryPayment[];
+  dayNotes: DayNote[];
 }
 
 export interface SalarySummary {
@@ -51,6 +58,7 @@ export type ApiAction =
   | { action: 'updateLocation'; name: string }
   | { action: 'addEmployee'; name: string; dailyRate: number }
   | { action: 'toggleShift'; employeeId: string; date: string }
+  | { action: 'saveDayNote'; date: string; comment: string }
   | {
       action: 'addPayment';
       employeeId: string;

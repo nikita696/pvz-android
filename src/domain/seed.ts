@@ -14,4 +14,5 @@ export const emptyAppState: AppState = {
   employees: [],
   shifts: [],
   payments: [],
+  dayNotes: [],
 };
