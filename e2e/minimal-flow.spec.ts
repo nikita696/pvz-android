@@ -189,7 +189,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByTestId(`toggle-selected-day-employee-${ANNA}`)).toBeVisible();
   await page.getByTestId(`toggle-selected-day-employee-${ANNA}`).click();
   await expect(page.getByText('\u0412\u0441\u0435\u0433\u043e \u0432 \u043c\u0435\u0441\u044f\u0446\u0435')).toBeVisible();
-  await expect(page.getByText('\u0412 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0434\u0435\u043d\u044c')).toBeVisible();
+  await expect(page.getByText('\u041e\u0442\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043e \u0434\u043d\u0435\u0439 \u0432\u0441\u0435\u0433\u043e')).toBeVisible();
 
   await page.getByTestId('open-day-note').click();
   await page.getByTestId('day-note-comment').fill(DAY_NOTE);

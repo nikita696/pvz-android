@@ -5,6 +5,7 @@ import {
   calculateTotalDue,
   getDayNoteByDate,
   getEmployeeMonthShiftCounts,
+  getEmployeeWorkedShiftCount,
   getShiftCountByDate,
   hasShift,
 } from './calculations';
@@ -120,6 +121,10 @@ describe('minimal payroll formula', () => {
       total: 4,
       worked: 3,
     });
+  });
+
+  it('counts all worked employee shifts through today', () => {
+    expect(getEmployeeWorkedShiftCount(state, 'emp-1', '2026-05-11')).toBe(4);
   });
 
   it('finds day notes by selected date', () => {

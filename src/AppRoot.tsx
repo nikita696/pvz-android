@@ -31,6 +31,7 @@ import {
   formatMoney,
   getDayNoteByDate,
   getEmployeeMonthShiftCounts,
+  getEmployeeWorkedShiftCount,
   hasShift,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
@@ -535,6 +536,7 @@ export default function AppRoot() {
                     <View style={styles.selectedEmployeesList}>
                       {activeEmployees.map((employee) => {
                         const monthShiftCounts = getEmployeeMonthShiftCounts(state, employee.id, selectedMonth);
+                        const workedShiftCount = getEmployeeWorkedShiftCount(state, employee.id);
                         const assigned = hasShift(state, employee.id, selectedDate);
                         const expanded = Boolean(expandedSelectedDayEmployees[employee.id]);
 
@@ -582,9 +584,9 @@ export default function AppRoot() {
                                   </Text>
                                 </View>
                                 <View style={styles.selectedEmployeeStat}>
-                                  <Text style={styles.selectedEmployeeStatLabel}>В выбранный день</Text>
+                                  <Text style={styles.selectedEmployeeStatLabel}>Отработано дней всего</Text>
                                   <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                                    {assigned ? 'да' : 'нет'}
+                                    {workedShiftCount}
                                   </Text>
                                 </View>
                               </View>

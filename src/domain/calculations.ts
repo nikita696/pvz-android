@@ -41,6 +41,14 @@ export function getEmployeeMonthShiftCounts(
   };
 }
 
+export function getEmployeeWorkedShiftCount(
+  state: AppState,
+  employeeId: string,
+  cutoffDate = isoDateFromLocalDate(),
+): number {
+  return state.shifts.filter((shift) => shift.employeeId === employeeId && shift.date <= cutoffDate).length;
+}
+
 export function getDayNoteByDate(state: AppState, date: string): string {
   return state.dayNotes.find((note) => note.date === date)?.comment ?? '';
 }
