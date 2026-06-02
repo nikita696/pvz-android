@@ -6,7 +6,6 @@ import {
   getCalendarDays,
   getDayOffInfo,
   getShiftEmployeesByDate,
-  shortEmployeeName,
 } from '../domain/calendar';
 import { TODAY } from '../domain/seed';
 import type { AppState } from '../domain/types';
@@ -87,18 +86,9 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                     </Text>
                   </View>
                   {employeesOnShift.length > 0 ? (
-                    <View style={styles.dayNames}>
+                    <View style={styles.dayDots}>
                       {employeesOnShift.slice(0, 3).map((employee) => (
-                        <View key={employee.id} style={styles.dayNameRow}>
-                          <View style={[styles.dayNameDot, { backgroundColor: employee.color }]} />
-                          <Text
-                            style={[styles.dayName, { color: employee.color }]}
-                            numberOfLines={1}
-                            ellipsizeMode="clip"
-                          >
-                            {shortEmployeeName(employee.name)}
-                          </Text>
-                        </View>
+                        <View key={employee.id} style={[styles.dayDot, { backgroundColor: employee.color }]} />
                       ))}
                     </View>
                   ) : null}
@@ -178,10 +168,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayNumberBadgeToday: {
-    backgroundColor: colors.accentStrong,
+    borderWidth: 2,
+    borderColor: colors.text,
+    backgroundColor: 'transparent',
   },
   dayNumberBadgeSelected: {
-    backgroundColor: colors.accentStrong,
+    borderWidth: 2,
+    borderColor: colors.text,
+    backgroundColor: 'transparent',
   },
   dayText: {
     fontFamily: appFont,
@@ -191,7 +185,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   dayTextSelected: {
-    color: '#ffffff',
+    color: colors.text,
   },
   dayTextOff: {
     color: colors.weekendText,
@@ -200,37 +194,22 @@ const styles = StyleSheet.create({
     color: colors.holidayText,
   },
   dayTextToday: {
-    color: '#ffffff',
+    color: colors.text,
   },
-  dayNames: {
+  dayDots: {
     width: '100%',
-    maxHeight: 34,
-    alignItems: 'center',
-    overflow: 'hidden',
-    gap: 1,
-  },
-  dayNameRow: {
-    width: '100%',
-    maxWidth: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
+    minHeight: 16,
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    gap: 3,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    gap: 4,
   },
-  dayNameDot: {
+  dayDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    opacity: 0.62,
-  },
-  dayName: {
-    fontFamily: appFont,
-    fontSize: 13,
-    lineHeight: 15,
-    fontWeight: '700',
-    flexShrink: 1,
-    maxWidth: '100%',
-    textAlign: 'center',
+    opacity: 0.72,
   },
   dayTooltip: {
     position: 'absolute',

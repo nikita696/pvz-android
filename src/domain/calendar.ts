@@ -47,10 +47,6 @@ export function chunkWeeks(days: Array<number | null>): Array<Array<number | nul
   return weeks;
 }
 
-export function shortEmployeeName(name: string): string {
-  return [...name.trim()].slice(0, 3).join('');
-}
-
 export function getDayOffInfo(date: string): DayOffInfo {
   const [, month, day] = date.split('-');
   const holidayName = HOLIDAYS[`${month}-${day}`];

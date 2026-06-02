@@ -52,13 +52,10 @@ export function SelectedDayPanel({
       </View>
 
       <Pressable style={styles.dayNoteCard} onPress={onOpenDayNote} testID="open-day-note">
-        <View style={styles.dayNoteHeader}>
-          <Text style={styles.dayNoteLabel}>Комментарий ко дню</Text>
-          <PencilLine size={15} color={colors.accentStrong} />
-        </View>
         <Text style={[styles.dayNoteText, !dayNote && styles.dayNotePlaceholder]}>
-          {dayNote || 'Добавить комментарий'}
+          {dayNote || 'Добавить комментарий ко дню'}
         </Text>
+        <PencilLine size={15} color={colors.accentStrong} />
       </Pressable>
 
       <View style={styles.selectedEmployeesPanel}>
@@ -185,20 +182,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panelSoft,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 5,
-  },
-  dayNoteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-  },
-  dayNoteLabel: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
+    gap: 10,
   },
   dayNoteText: {
     fontFamily: appFont,
@@ -206,6 +193,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: '700',
+    flex: 1,
+    minWidth: 0,
   },
   dayNotePlaceholder: {
     color: colors.muted,

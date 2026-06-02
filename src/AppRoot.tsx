@@ -1406,7 +1406,7 @@ const styles = StyleSheet.create({
   },
   totalMoney: {
     fontFamily: appFont,
-    color: colors.accentText,
+    color: colors.text,
     fontSize: 44,
     lineHeight: 50,
     fontWeight: '900',
@@ -1443,7 +1443,7 @@ const styles = StyleSheet.create({
   },
   deductionLine: {
     fontFamily: appFont,
-    color: colors.dangerText,
+    color: colors.muted,
     fontSize: 11,
     lineHeight: 15,
     fontWeight: '800',
@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
   },
   dueMoney: {
     fontFamily: appFont,
-    color: colors.accentStrong,
+    color: colors.text,
     fontSize: 18,
     fontWeight: '900',
   },
@@ -1617,7 +1617,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   historyAmountDeduction: {
-    color: colors.dangerText,
+    color: colors.text,
   },
   historyActions: {
     flexDirection: 'row',
