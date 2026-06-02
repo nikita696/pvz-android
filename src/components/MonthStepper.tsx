@@ -15,11 +15,11 @@ export function MonthStepper({ month, formatMonthLabel, shiftMonth, onChange }: 
   return (
     <View style={styles.monthStepper}>
       <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, -1))}>
-        <ChevronLeft size={18} color={colors.accentText} />
+        <ChevronLeft size={26} color={colors.muted} />
       </Pressable>
       <Text style={styles.monthText}>{formatMonthLabel(month)}</Text>
       <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, 1))}>
-        <ChevronRight size={18} color={colors.accentText} />
+        <ChevronRight size={26} color={colors.muted} />
       </Pressable>
     </View>
   );
@@ -37,15 +37,15 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.accent,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
   monthText: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 24,
-    lineHeight: 29,
+    fontSize: 30,
+    lineHeight: 36,
     flex: 1,
     textAlign: 'center',
     fontWeight: '900',

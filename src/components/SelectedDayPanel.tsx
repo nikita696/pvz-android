@@ -89,7 +89,10 @@ export function SelectedDayPanel({
                 const expanded = Boolean(expandedEmployees[employee.id]);
 
                 return (
-                  <View key={employee.id} style={styles.selectedEmployeeItem}>
+                  <View
+                    key={employee.id}
+                    style={[styles.selectedEmployeeItem, { borderLeftColor: employee.color }]}
+                  >
                     <Pressable
                       accessibilityRole="button"
                       style={styles.selectedEmployeeHeader}
@@ -120,15 +123,9 @@ export function SelectedDayPanel({
                     {expanded ? (
                       <View style={styles.selectedEmployeeStats}>
                         <View style={styles.selectedEmployeeStat}>
-                          <Text style={styles.selectedEmployeeStatLabel}>Всего в месяце</Text>
+                          <Text style={styles.selectedEmployeeStatLabel}>Все/отраб. в месяце</Text>
                           <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                            {monthShiftCounts.total}
-                          </Text>
-                        </View>
-                        <View style={styles.selectedEmployeeStat}>
-                          <Text style={styles.selectedEmployeeStatLabel}>Отработано</Text>
-                          <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                            {monthShiftCounts.worked}
+                            {monthShiftCounts.total}/{monthShiftCounts.worked}
                           </Text>
                         </View>
                         <View style={styles.selectedEmployeeStat}>
@@ -171,8 +168,8 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 21,
-    lineHeight: 26,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: '900',
   },
   muted: {
@@ -182,9 +179,9 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   dayNoteCard: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: colors.panelSoft,
     borderWidth: 1,
     borderColor: colors.border,
@@ -214,17 +211,22 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   selectedEmployeesPanel: {
-    borderRadius: 8,
+    borderRadius: 18,
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
+    shadowColor: '#111312',
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
   selectedEmployeesHeader: {
-    minHeight: 54,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: colors.accentSoft,
+    minHeight: 60,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#EEF6F0',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -257,20 +259,20 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   selectedEmployeesList: {
-    padding: 8,
-    gap: 8,
+    padding: 10,
+    gap: 10,
   },
   selectedEmployeeItem: {
-    borderRadius: 8,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 16,
+    backgroundColor: '#F2FAF4',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.accentStrong,
     overflow: 'hidden',
   },
   selectedEmployeeHeader: {
-    minHeight: 50,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    minHeight: 76,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -282,17 +284,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   employeeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#ffffff',
+    width: 16,
+    height: 16,
+    borderRadius: 5,
   },
   employeeName: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: '900',
   },
   selectedEmployeeMeta: {
     flexDirection: 'row',
@@ -315,9 +316,9 @@ const styles = StyleSheet.create({
   selectedEmployeeStats: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    gap: 7,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    gap: 9,
   },
   selectedEmployeeStat: {
     flexDirection: 'row',

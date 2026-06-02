@@ -40,7 +40,7 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
           <View key={`week-${weekIndex}`} style={styles.daysRow}>
             {week.map((day, dayIndex) => {
               if (!day) {
-                return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.dayCell} />;
+                return <View key={`empty-${weekIndex}-${dayIndex}`} style={[styles.dayCell, styles.dayCellEmpty]} />;
               }
 
               const date = `${month}-${String(day).padStart(2, '0')}`;
@@ -56,8 +56,6 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                     styles.dayCell,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
-                    employeesOnShift.length > 0 && styles.dayCellFilled,
-                    employeesOnShift.length > 0 && { borderColor: employeesOnShift[0].color },
                     selected && styles.dayCellSelected,
                   ]}
                   onPress={() => onSelect(date)}
@@ -69,14 +67,20 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                   onHoverOut={() => setHoveredDayOff(null)}
                   testID={`day-${day}`}
                 >
-                  <View style={[styles.dayNumberBadge, today && styles.dayNumberBadgeToday]}>
+                  <View
+                    style={[
+                      styles.dayNumberBadge,
+                      today && styles.dayNumberBadgeToday,
+                      selected && styles.dayNumberBadgeSelected,
+                    ]}
+                  >
                     <Text
                       style={[
                         styles.dayText,
-                        selected && styles.dayTextSelected,
                         dayOff && styles.dayTextOff,
                         dayOff?.holiday && styles.dayTextHoliday,
                         today && styles.dayTextToday,
+                        selected && styles.dayTextSelected,
                       ]}
                     >
                       {day}
@@ -85,14 +89,16 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                   {employeesOnShift.length > 0 ? (
                     <View style={styles.dayNames}>
                       {employeesOnShift.slice(0, 3).map((employee) => (
-                        <Text
-                          key={employee.id}
-                          style={[styles.dayName, { color: employee.color }]}
-                          numberOfLines={1}
-                          ellipsizeMode="clip"
-                        >
-                          {shortEmployeeName(employee.name)}
-                        </Text>
+                        <View key={employee.id} style={styles.dayNameRow}>
+                          <View style={[styles.dayNameDot, { backgroundColor: employee.color }]} />
+                          <Text
+                            style={[styles.dayName, { color: employee.color }]}
+                            numberOfLines={1}
+                            ellipsizeMode="clip"
+                          >
+                            {shortEmployeeName(employee.name)}
+                          </Text>
+                        </View>
                       ))}
                     </View>
                   ) : null}
@@ -115,7 +121,7 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
 
 const styles = StyleSheet.create({
   calendar: {
-    gap: 8,
+    gap: 14,
   },
   weekRow: {
     flexDirection: 'row',
@@ -125,69 +131,67 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.muted,
     textAlign: 'center',
-    fontSize: 11,
+    fontSize: 14,
+    lineHeight: 18,
     fontWeight: '700',
   },
   weekdayWeekend: {
     color: colors.weekendText,
   },
   weeks: {
-    gap: 6,
+    gap: 12,
   },
   daysRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
   },
   dayCell: {
     flex: 1,
     aspectRatio: 1,
-    borderRadius: 9,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    gap: 2,
+    gap: 3,
     paddingHorizontal: 2,
-    paddingTop: 5,
+    paddingTop: 2,
     position: 'relative',
   },
+  dayCellEmpty: {
+    backgroundColor: '#F0EFEC',
+    opacity: 0.76,
+  },
   dayCellOff: {
-    backgroundColor: colors.panelSoft,
-    borderColor: colors.border,
+    backgroundColor: 'transparent',
   },
   dayCellHoliday: {
-    backgroundColor: colors.panelSoft,
-    borderColor: colors.border,
-  },
-  dayCellFilled: {
-    borderWidth: 2,
-    borderColor: colors.accentStrong,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
   },
   dayCellSelected: {
-    borderWidth: 2,
-    borderColor: colors.accentWarm,
+    backgroundColor: 'transparent',
   },
   dayNumberBadge: {
-    minWidth: 22,
-    minHeight: 20,
-    borderRadius: 10,
-    paddingHorizontal: 5,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayNumberBadgeToday: {
-    backgroundColor: colors.accentText,
+    backgroundColor: colors.accentStrong,
+  },
+  dayNumberBadgeSelected: {
+    backgroundColor: colors.accentStrong,
   },
   dayText: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: '900',
   },
   dayTextSelected: {
-    color: colors.text,
+    color: '#ffffff',
   },
   dayTextOff: {
     color: colors.weekendText,
@@ -200,16 +204,31 @@ const styles = StyleSheet.create({
   },
   dayNames: {
     width: '100%',
-    maxHeight: 32,
+    maxHeight: 34,
     alignItems: 'center',
     overflow: 'hidden',
-    gap: 0,
+    gap: 1,
+  },
+  dayNameRow: {
+    width: '100%',
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  dayNameDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    opacity: 0.62,
   },
   dayName: {
     fontFamily: appFont,
-    fontSize: 10,
-    lineHeight: 11,
-    fontWeight: '900',
+    fontSize: 13,
+    lineHeight: 15,
+    fontWeight: '700',
+    flexShrink: 1,
     maxWidth: '100%',
     textAlign: 'center',
   },
