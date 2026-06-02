@@ -191,10 +191,15 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText('\u0412\u0441\u0435/\u043e\u0442\u0440\u0430\u0431. \u0432 \u043c\u0435\u0441\u044f\u0446\u0435')).toBeVisible();
   await expect(page.getByText('\u041e\u0442\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043e \u0434\u043d\u0435\u0439 \u0432\u0441\u0435\u0433\u043e')).toBeVisible();
 
+  await page.getByTestId('day-31').click();
+  await expect(page.getByTestId('open-day-note')).toBeVisible();
+  await expect(page.getByText('замена · опоздание · прогул · больничный')).toBeVisible();
   await page.getByTestId('open-day-note').click();
   await page.getByTestId('day-note-comment').fill(DAY_NOTE);
   await page.getByTestId('save-day-note').click();
-  await expect(page.getByTestId('open-day-note').getByText(DAY_NOTE)).toBeVisible();
+  await page.getByTestId('day-31').click();
+  await expect(page.getByTestId('open-day-note').getByText(DAY_NOTE, { exact: true })).toBeVisible();
+  await page.getByTestId('close-assignment').click();
 
   await page.getByTestId('open-location-editor').click();
   await page.getByTestId('location-name').fill(UPDATED_LOCATION);

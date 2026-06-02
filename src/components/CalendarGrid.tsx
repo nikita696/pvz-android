@@ -23,7 +23,7 @@ type CalendarGridProps = {
 export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarGridProps) {
   const days = getCalendarDays(month);
   const weeks = chunkWeeks(days);
-  const [hoveredDayOff, setHoveredDayOff] = useState<{ date: string; label: string } | null>(null);
+  const [hoveredDay, setHoveredDay] = useState<{ date: string; label: string } | null>(null);
 
   return (
     <View style={styles.calendar}>
@@ -47,6 +47,12 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
               const today = date === TODAY;
               const employeesOnShift = getShiftEmployeesByDate(state, date);
               const dayOff = getDayOffInfo(date);
+              const tooltipParts = [
+                employeesOnShift.length
+                  ? `На смене: ${employeesOnShift.map((employee) => employee.name).join(', ')}`
+                  : '',
+                dayOff?.label ?? '',
+              ].filter(Boolean);
 
               return (
                 <Pressable
@@ -59,11 +65,11 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                   ]}
                   onPress={() => onSelect(date)}
                   onHoverIn={() => {
-                    if (dayOff) {
-                      setHoveredDayOff({ date, label: dayOff.label });
+                    if (tooltipParts.length) {
+                      setHoveredDay({ date, label: tooltipParts.join('\n') });
                     }
                   }}
-                  onHoverOut={() => setHoveredDayOff(null)}
+                  onHoverOut={() => setHoveredDay(null)}
                   testID={`day-${day}`}
                 >
                   <View
@@ -92,10 +98,10 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                       ))}
                     </View>
                   ) : null}
-                  {hoveredDayOff?.date === date ? (
+                  {hoveredDay?.date === date ? (
                     <View style={styles.dayTooltip} pointerEvents="none">
                       <Text style={styles.dayTooltipText} numberOfLines={2}>
-                        {hoveredDayOff.label}
+                        {hoveredDay.label}
                       </Text>
                     </View>
                   ) : null}

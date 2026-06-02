@@ -458,21 +458,6 @@ export default function AppRoot() {
               />
             </View>
 
-            <SelectedDayPanel
-              activeEmployees={activeEmployees}
-              expandedEmployees={expandedSelectedDayEmployees}
-              employeesOpen={selectedDayEmployeesOpen}
-              selectedDate={selectedDate}
-              selectedDateLabel={selectedDateLabel}
-              selectedMonth={selectedMonth}
-              shiftCount={selectedDayShifts.length}
-              state={state}
-              dayNote={selectedDayNote}
-              onOpenDayNote={openDayNoteDialog}
-              onToggleEmployee={toggleSelectedDayEmployee}
-              onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
-            />
-
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionHeaderText}>
@@ -504,6 +489,19 @@ export default function AppRoot() {
                 />
               ))}
             </View>
+
+            <SelectedDayPanel
+              activeEmployees={activeEmployees}
+              expandedEmployees={expandedSelectedDayEmployees}
+              employeesOpen={selectedDayEmployeesOpen}
+              selectedDate={selectedDate}
+              selectedDateLabel={selectedDateLabel}
+              selectedMonth={selectedMonth}
+              shiftCount={selectedDayShifts.length}
+              state={state}
+              onToggleEmployee={toggleSelectedDayEmployee}
+              onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
+            />
           </ScrollView>
         )}
 
@@ -525,6 +523,15 @@ export default function AppRoot() {
               <Text style={styles.assignmentDayOffText}>{selectedDayOff.label}</Text>
             </View>
           ) : null}
+          <Pressable style={styles.assignmentNoteButton} onPress={openDayNoteDialog} testID="open-day-note">
+            <View style={styles.assignmentNoteText}>
+              <Text style={styles.assignmentNoteTitle}>
+                {selectedDayNote || 'Добавить комментарий'}
+              </Text>
+              <Text style={styles.assignmentNoteExamples}>замена · опоздание · прогул · больничный</Text>
+            </View>
+            <PencilLine size={15} color={colors.accentStrong} />
+          </Pressable>
           <View style={styles.assignmentList}>
             {activeEmployees.length ? (
               activeEmployees.map((employee) => {
@@ -562,7 +569,7 @@ export default function AppRoot() {
             style={[styles.input, styles.dayNoteInput]}
             value={dayNoteText}
             onChangeText={setDayNoteText}
-            placeholder="Например: замена, опоздал, инвентаризация"
+            placeholder="Например: замена, опоздание, прогул, больничный"
             placeholderTextColor="#9CA3AF"
             multiline
             maxLength={160}
@@ -1295,6 +1302,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     fontWeight: '800',
+  },
+  assignmentNoteButton: {
+    minHeight: 58,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  assignmentNoteText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  assignmentNoteTitle: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '900',
+  },
+  assignmentNoteExamples: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
   },
   assignmentRow: {
     minHeight: 50,

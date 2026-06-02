@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, PencilLine } from 'lucide-react-native';
+import { ChevronDown, ChevronRight } from 'lucide-react-native';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -20,8 +20,6 @@ type SelectedDayPanelProps = {
   selectedMonth: string;
   shiftCount: number;
   state: AppState;
-  dayNote: string;
-  onOpenDayNote: () => void;
   onToggleEmployee: (employeeId: string) => void;
   onToggleEmployeesOpen: () => void;
 };
@@ -35,8 +33,6 @@ export function SelectedDayPanel({
   selectedMonth,
   shiftCount,
   state,
-  dayNote,
-  onOpenDayNote,
   onToggleEmployee,
   onToggleEmployeesOpen,
 }: SelectedDayPanelProps) {
@@ -50,13 +46,6 @@ export function SelectedDayPanel({
           </Text>
         </View>
       </View>
-
-      <Pressable style={styles.dayNoteCard} onPress={onOpenDayNote} testID="open-day-note">
-        <Text style={[styles.dayNoteText, !dayNote && styles.dayNotePlaceholder]}>
-          {dayNote || 'Добавить комментарий ко дню'}
-        </Text>
-        <PencilLine size={15} color={colors.accentStrong} />
-      </Pressable>
 
       <View style={styles.selectedEmployeesPanel}>
         <Pressable
@@ -174,30 +163,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     lineHeight: 17,
-  },
-  dayNoteCard: {
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  dayNoteText: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-    flex: 1,
-    minWidth: 0,
-  },
-  dayNotePlaceholder: {
-    color: colors.muted,
   },
   selectedEmployeesPanel: {
     borderRadius: 18,
