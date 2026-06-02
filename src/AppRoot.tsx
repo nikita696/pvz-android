@@ -1,9 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import {
   Archive,
-  CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   PencilLine,
   Plus,
@@ -14,7 +12,6 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,17 +22,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { fetchState, sendAction } from './api';
+import { CalendarGrid } from './components/CalendarGrid';
+import { MonthStepper } from './components/MonthStepper';
+import { SelectedDayPanel } from './components/SelectedDayPanel';
+import { Dialog, EmptyState, Field, Notice } from './components/primitives';
+import { getDayOffInfo } from './domain/calendar';
 import {
   calculateSalary,
   calculateTotalDue,
   formatMoney,
   getDayNoteByDate,
-  getEmployeeMonthShiftCounts,
-  getEmployeeWorkedShiftCount,
   hasShift,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
 import type { ApiAction, AppState, Employee, PaymentKind, SalaryPayment } from './domain/types';
+import { appFont, colors } from './ui/theme';
 
 const MONTH_NAMES = [
   'январь',
@@ -51,46 +52,6 @@ const MONTH_NAMES = [
   'ноябрь',
   'декабрь',
 ];
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-const HOLIDAYS: Record<string, string> = {
-  '01-01': 'Новогодние каникулы',
-  '01-02': 'Новогодние каникулы',
-  '01-03': 'Новогодние каникулы',
-  '01-04': 'Новогодние каникулы',
-  '01-05': 'Новогодние каникулы',
-  '01-06': 'Новогодние каникулы',
-  '01-07': 'Рождество Христово',
-  '01-08': 'Новогодние каникулы',
-  '02-23': 'День защитника Отечества',
-  '03-08': 'Международный женский день',
-  '05-01': 'Праздник Весны и Труда',
-  '05-09': 'День Победы',
-  '06-12': 'День России',
-  '11-04': 'День народного единства',
-};
-const appFont = 'Arial';
-const colors = {
-  background: '#fbfcfb',
-  panel: '#ffffff',
-  panelSoft: '#f4f7f5',
-  border: '#dde6df',
-  borderStrong: '#8ba99a',
-  text: '#121a16',
-  muted: '#68766f',
-  accent: '#b8e6d0',
-  accentStrong: '#197a58',
-  accentSoft: '#eef9f4',
-  accentWarm: '#f5d76e',
-  accentWarmSoft: '#fff4bf',
-  accentText: '#102017',
-  weekendBg: '#fff7f8',
-  weekendBorder: '#f3d7de',
-  weekendText: '#dc2626',
-  holidayText: '#c2410c',
-  dangerBg: '#fff1f3',
-  dangerBorder: '#efbdc7',
-  dangerText: '#a43d50',
-};
 
 type DialogName =
   | 'assign'
@@ -103,7 +64,6 @@ type DialogName =
   | 'location'
   | 'payment'
   | null;
-type DayOffInfo = { label: string; holiday: boolean } | null;
 type PaymentMonthGroup = {
   month: string;
   payments: SalaryPayment[];
@@ -483,7 +443,12 @@ export default function AppRoot() {
 
             <View style={styles.calendarCard}>
               <View style={styles.cardHeader}>
-                <MonthStepper month={selectedMonth} onChange={setSelectedMonth} />
+                <MonthStepper
+                  month={selectedMonth}
+                  formatMonthLabel={formatMonthLabel}
+                  shiftMonth={shiftMonth}
+                  onChange={setSelectedMonth}
+                />
               </View>
               <CalendarGrid
                 month={selectedMonth}
@@ -493,114 +458,20 @@ export default function AppRoot() {
               />
             </View>
 
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionHeaderText}>
-                  <Text style={styles.sectionTitle}>{selectedDateLabel}</Text>
-                  <Text style={styles.muted}>
-                    {selectedDayShifts.length ? `${selectedDayShifts.length} смен(ы)` : 'Смен нет'}
-                  </Text>
-                </View>
-              </View>
-
-              <Pressable style={styles.dayNoteCard} onPress={openDayNoteDialog} testID="open-day-note">
-                <View style={styles.dayNoteHeader}>
-                  <Text style={styles.dayNoteLabel}>Комментарий ко дню</Text>
-                  <PencilLine size={15} color={colors.accentStrong} />
-                </View>
-                <Text style={[styles.dayNoteText, !selectedDayNote && styles.dayNotePlaceholder]}>
-                  {selectedDayNote || 'Добавить комментарий'}
-                </Text>
-              </Pressable>
-
-              <View style={styles.selectedEmployeesPanel}>
-                <Pressable
-                  accessibilityRole="button"
-                  style={styles.selectedEmployeesHeader}
-                  onPress={() => setSelectedDayEmployeesOpen((current) => !current)}
-                  testID="toggle-selected-day-employees"
-                >
-                  <View style={styles.selectedEmployeesTitleRow}>
-                    {selectedDayEmployeesOpen ? (
-                      <ChevronDown size={18} color={colors.accentText} />
-                    ) : (
-                      <ChevronRight size={18} color={colors.accentText} />
-                    )}
-                    <Text style={styles.selectedEmployeesTitle}>Сотрудники</Text>
-                  </View>
-                  <Text style={styles.selectedEmployeesCount}>{activeEmployees.length}</Text>
-                </Pressable>
-
-                {selectedDayEmployeesOpen ? (
-                  activeEmployees.length ? (
-                    <View style={styles.selectedEmployeesList}>
-                      {activeEmployees.map((employee) => {
-                        const monthShiftCounts = getEmployeeMonthShiftCounts(state, employee.id, selectedMonth);
-                        const workedShiftCount = getEmployeeWorkedShiftCount(state, employee.id);
-                        const assigned = hasShift(state, employee.id, selectedDate);
-                        const expanded = Boolean(expandedSelectedDayEmployees[employee.id]);
-
-                        return (
-                          <View key={employee.id} style={styles.selectedEmployeeItem}>
-                            <Pressable
-                              accessibilityRole="button"
-                              style={styles.selectedEmployeeHeader}
-                              onPress={() => toggleSelectedDayEmployee(employee.id)}
-                              testID={`toggle-selected-day-employee-${employee.name}`}
-                            >
-                              <View style={styles.employeeTitleRow}>
-                                <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
-                                <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
-                              </View>
-                              <View style={styles.selectedEmployeeMeta}>
-                                <Text
-                                  style={[
-                                    styles.selectedEmployeeStatus,
-                                    assigned ? styles.selectedEmployeeStatusActive : styles.selectedEmployeeStatusMuted,
-                                  ]}
-                                >
-                                  {assigned ? 'на смене' : 'нет смены'}
-                                </Text>
-                                {expanded ? (
-                                  <ChevronDown size={16} color={colors.muted} />
-                                ) : (
-                                  <ChevronRight size={16} color={colors.muted} />
-                                )}
-                              </View>
-                            </Pressable>
-
-                            {expanded ? (
-                              <View style={styles.selectedEmployeeStats}>
-                                <View style={styles.selectedEmployeeStat}>
-                                  <Text style={styles.selectedEmployeeStatLabel}>Всего в месяце</Text>
-                                  <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                                    {monthShiftCounts.total}
-                                  </Text>
-                                </View>
-                                <View style={styles.selectedEmployeeStat}>
-                                  <Text style={styles.selectedEmployeeStatLabel}>Отработано</Text>
-                                  <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                                    {monthShiftCounts.worked}
-                                  </Text>
-                                </View>
-                                <View style={styles.selectedEmployeeStat}>
-                                  <Text style={styles.selectedEmployeeStatLabel}>Отработано дней всего</Text>
-                                  <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                                    {workedShiftCount}
-                                  </Text>
-                                </View>
-                              </View>
-                            ) : null}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  ) : (
-                    <EmptyState text="Добавь сотрудников в отдельном окне, потом назначай смены здесь." />
-                  )
-                ) : null}
-              </View>
-            </View>
+            <SelectedDayPanel
+              activeEmployees={activeEmployees}
+              expandedEmployees={expandedSelectedDayEmployees}
+              employeesOpen={selectedDayEmployeesOpen}
+              selectedDate={selectedDate}
+              selectedDateLabel={selectedDateLabel}
+              selectedMonth={selectedMonth}
+              shiftCount={selectedDayShifts.length}
+              state={state}
+              dayNote={selectedDayNote}
+              onOpenDayNote={openDayNoteDialog}
+              onToggleEmployee={toggleSelectedDayEmployee}
+              onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
+            />
 
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -1008,139 +879,6 @@ export default function AppRoot() {
   );
 }
 
-function CalendarGrid({
-  month,
-  selectedDate,
-  state,
-  onSelect,
-}: {
-  month: string;
-  selectedDate: string;
-  state: AppState;
-  onSelect: (date: string) => void;
-}) {
-  const days = getCalendarDays(month);
-  const weeks = chunkWeeks(days);
-  const [hoveredDayOff, setHoveredDayOff] = useState<{ date: string; label: string } | null>(null);
-
-  return (
-    <View style={styles.calendar}>
-      <View style={styles.weekRow}>
-        {WEEKDAYS.map((day, dayIndex) => (
-          <Text key={day} style={[styles.weekday, dayIndex >= 5 && styles.weekdayWeekend]}>
-            {day}
-          </Text>
-        ))}
-      </View>
-      <View style={styles.weeks}>
-        {weeks.map((week, weekIndex) => (
-          <View key={`week-${weekIndex}`} style={styles.daysRow}>
-            {week.map((day, dayIndex) => {
-              if (!day) {
-                return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.dayCell} />;
-              }
-
-              const date = `${month}-${String(day).padStart(2, '0')}`;
-              const selected = selectedDate === date;
-              const today = date === TODAY;
-              const employeesOnShift = getShiftEmployeesByDate(state, date);
-              const dayOff = getDayOffInfo(date);
-
-              return (
-                <Pressable
-                  key={date}
-                  style={[
-                    styles.dayCell,
-                    dayOff && styles.dayCellOff,
-                    dayOff?.holiday && styles.dayCellHoliday,
-                    employeesOnShift.length > 0 && styles.dayCellFilled,
-                    employeesOnShift.length > 0 && { borderColor: employeesOnShift[0].color },
-                    selected && styles.dayCellSelected,
-                  ]}
-                  onPress={() => onSelect(date)}
-                  onHoverIn={() => {
-                    if (dayOff) {
-                      setHoveredDayOff({ date, label: dayOff.label });
-                    }
-                  }}
-                  onHoverOut={() => setHoveredDayOff(null)}
-                  testID={`day-${day}`}
-                >
-                  <View style={[styles.dayNumberBadge, today && styles.dayNumberBadgeToday]}>
-                    <Text
-                      style={[
-                        styles.dayText,
-                        selected && styles.dayTextSelected,
-                        dayOff && styles.dayTextOff,
-                        dayOff?.holiday && styles.dayTextHoliday,
-                        today && styles.dayTextToday,
-                      ]}
-                    >
-                      {day}
-                    </Text>
-                  </View>
-                  {employeesOnShift.length > 0 ? (
-                    <View style={styles.dayNames}>
-                      {employeesOnShift.slice(0, 3).map((employee) => (
-                        <Text
-                          key={employee.id}
-                          style={[styles.dayName, { color: employee.color }]}
-                          numberOfLines={1}
-                          ellipsizeMode="clip"
-                        >
-                          {shortEmployeeName(employee.name)}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
-                  {hoveredDayOff?.date === date ? (
-                    <View style={styles.dayTooltip} pointerEvents="none">
-                      <Text style={styles.dayTooltipText} numberOfLines={2}>
-                        {hoveredDayOff.label}
-                      </Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function shortEmployeeName(name: string): string {
-  return [...name.trim()].slice(0, 3).join('');
-}
-
-function getDayOffInfo(date: string): DayOffInfo {
-  const [, month, day] = date.split('-');
-  const holidayName = HOLIDAYS[`${month}-${day}`];
-
-  if (holidayName) {
-    return { label: holidayName, holiday: true };
-  }
-
-  const [yearNumber, monthNumber, dayNumber] = date.split('-').map(Number);
-  const weekday = new Date(yearNumber, monthNumber - 1, dayNumber).getDay();
-
-  if (weekday === 0 || weekday === 6) {
-    return { label: 'Выходной день', holiday: false };
-  }
-
-  return null;
-}
-
-function getShiftEmployeesByDate(state: AppState, date: string): Employee[] {
-  const activeEmployees = state.employees.filter((employee) => employee.active);
-  const employeeIds = new Set(
-    state.shifts.filter((shift) => shift.date === date).map((shift) => shift.employeeId),
-  );
-
-  return activeEmployees.filter((employee) => employeeIds.has(employee.id));
-}
-
 function SalaryCard({
   state,
   employee,
@@ -1297,129 +1035,6 @@ function PaymentHistory({
       })}
     </ScrollView>
   );
-}
-
-function MonthStepper({ month, onChange }: { month: string; onChange: (month: string) => void }) {
-  return (
-    <View style={styles.monthStepper}>
-      <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, -1))}>
-        <ChevronLeft size={18} color={colors.accentText} />
-      </Pressable>
-      <Text style={styles.monthText}>{formatMonthLabel(month)}</Text>
-      <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, 1))}>
-        <ChevronRight size={18} color={colors.accentText} />
-      </Pressable>
-    </View>
-  );
-}
-
-function Dialog({
-  visible,
-  title,
-  children,
-  closeTestID,
-  onClose,
-}: {
-  visible: boolean;
-  title: string;
-  children: React.ReactNode;
-  closeTestID?: string;
-  onClose: () => void;
-}) {
-  return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.dialog}>
-          <View style={styles.dialogHeader}>
-            <Text style={styles.dialogTitle}>{title}</Text>
-            <Pressable onPress={onClose} testID={closeTestID ?? 'dialog-close'}>
-              <Text style={styles.cancelText}>Отмена</Text>
-            </Pressable>
-          </View>
-          {children}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChangeText,
-  keyboardType,
-  placeholder,
-  maxLength,
-  testID,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  keyboardType?: 'default' | 'numeric';
-  placeholder?: string;
-  maxLength?: number;
-  testID?: string;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        placeholderTextColor="#9aa399"
-        testID={testID}
-      />
-    </View>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <View style={styles.emptyState}>
-      <CalendarDays size={24} color={colors.muted} />
-      <Text style={styles.emptyText}>{text}</Text>
-    </View>
-  );
-}
-
-function Notice({ text }: { text: string }) {
-  return (
-    <View style={styles.notice}>
-      <Text style={styles.noticeText}>{text}</Text>
-    </View>
-  );
-}
-
-function getCalendarDays(month: string): Array<number | null> {
-  const [year, monthNumber] = month.split('-').map(Number);
-  const first = new Date(year, monthNumber - 1, 1);
-  const daysInMonth = new Date(year, monthNumber, 0).getDate();
-  const offset = (first.getDay() + 6) % 7;
-  const days: Array<number | null> = Array.from({ length: offset }, () => null);
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    days.push(day);
-  }
-
-  while (days.length % 7 !== 0) {
-    days.push(null);
-  }
-
-  return days;
-}
-
-function chunkWeeks(days: Array<number | null>): Array<Array<number | null>> {
-  const weeks: Array<Array<number | null>> = [];
-
-  for (let index = 0; index < days.length; index += 7) {
-    weeks.push(days.slice(index, index + 7));
-  }
-
-  return weeks;
 }
 
 function shiftMonth(month: string, offset: number): string {
@@ -1589,161 +1204,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  cardTitle: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 19,
-    fontWeight: '800',
-  },
   muted: {
     fontFamily: appFont,
     color: colors.muted,
     fontSize: 12,
     lineHeight: 17,
-  },
-  monthStepper: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  roundButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monthText: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 24,
-    lineHeight: 29,
-    flex: 1,
-    textAlign: 'center',
-    fontWeight: '900',
-  },
-  calendar: {
-    gap: 8,
-  },
-  weekRow: {
-    flexDirection: 'row',
-  },
-  weekday: {
-    fontFamily: appFont,
-    flex: 1,
-    color: colors.muted,
-    textAlign: 'center',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  weekdayWeekend: {
-    color: colors.weekendText,
-  },
-  weeks: {
-    gap: 6,
-  },
-  daysRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  dayCell: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: 9,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 2,
-    paddingHorizontal: 2,
-    paddingTop: 5,
-    position: 'relative',
-  },
-  dayCellOff: {
-    backgroundColor: colors.panelSoft,
-    borderColor: colors.border,
-  },
-  dayCellHoliday: {
-    backgroundColor: colors.panelSoft,
-    borderColor: colors.border,
-  },
-  dayCellFilled: {
-    borderWidth: 2,
-    borderColor: colors.accentStrong,
-    backgroundColor: '#ffffff',
-  },
-  dayCellSelected: {
-    borderWidth: 2,
-    borderColor: colors.accentWarm,
-  },
-  dayNumberBadge: {
-    minWidth: 22,
-    minHeight: 20,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayNumberBadgeToday: {
-    backgroundColor: colors.accentText,
-  },
-  dayText: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  dayTextSelected: {
-    color: colors.text,
-  },
-  dayTextOff: {
-    color: colors.weekendText,
-  },
-  dayTextHoliday: {
-    color: colors.holidayText,
-  },
-  dayTextToday: {
-    color: '#ffffff',
-  },
-  dayNames: {
-    width: '100%',
-    maxHeight: 32,
-    alignItems: 'center',
-    overflow: 'hidden',
-    gap: 0,
-  },
-  dayName: {
-    fontFamily: appFont,
-    fontSize: 10,
-    lineHeight: 11,
-    fontWeight: '900',
-    maxWidth: '100%',
-    textAlign: 'center',
-  },
-  dayTooltip: {
-    position: 'absolute',
-    left: -22,
-    right: -22,
-    bottom: 42,
-    zIndex: 20,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-  },
-  dayTooltipText: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 10,
-    lineHeight: 12,
-    textAlign: 'center',
-    fontWeight: '800',
   },
   section: {
     gap: 10,
@@ -1785,184 +1250,6 @@ const styles = StyleSheet.create({
     color: colors.accentText,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: '800',
-  },
-  dayNoteCard: {
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 5,
-  },
-  dayNoteHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  dayNoteLabel: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-  },
-  dayNoteText: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
-  dayNotePlaceholder: {
-    color: colors.muted,
-  },
-  selectedEmployeesPanel: {
-    borderRadius: 8,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  selectedEmployeesHeader: {
-    minHeight: 54,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: colors.accentSoft,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  selectedEmployeesTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  selectedEmployeesTitle: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: '900',
-  },
-  selectedEmployeesCount: {
-    minWidth: 30,
-    borderRadius: 15,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    backgroundColor: colors.panel,
-    color: colors.accentText,
-    overflow: 'hidden',
-    textAlign: 'center',
-    fontFamily: appFont,
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-  },
-  selectedEmployeesList: {
-    padding: 8,
-    gap: 8,
-  },
-  selectedEmployeeItem: {
-    borderRadius: 8,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  selectedEmployeeHeader: {
-    minHeight: 50,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  selectedEmployeeMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    flexShrink: 0,
-  },
-  selectedEmployeeStatus: {
-    fontFamily: appFont,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-  },
-  selectedEmployeeStatusActive: {
-    color: colors.accentStrong,
-  },
-  selectedEmployeeStatusMuted: {
-    color: colors.muted,
-  },
-  selectedEmployeeStats: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    gap: 7,
-  },
-  selectedEmployeeStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  selectedEmployeeStatLabel: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-  },
-  selectedEmployeeStatValue: {
-    fontFamily: appFont,
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '900',
-  },
-  employeeShiftRow: {
-    minHeight: 72,
-    borderRadius: 8,
-    padding: 14,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderLeftWidth: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  employeeShiftRowActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: '#c7e7d5',
-  },
-  employeeShiftInfo: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  monthShiftSummary: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  monthShiftSummaryValue: {
-    fontFamily: appFont,
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: '900',
-  },
-  monthShiftSummaryLabel: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 10,
-    lineHeight: 13,
     fontWeight: '800',
   },
   employeeName: {
@@ -2065,19 +1352,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-  shiftStatusActive: {
-    color: colors.accent,
-  },
-  deleteButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.dangerBg,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   deleteTextButton: {
     minHeight: 34,
     borderRadius: 17,
@@ -2176,37 +1450,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
   },
-  emptyState: {
-    minHeight: 112,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 18,
-  },
-  emptyText: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  notice: {
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: colors.dangerBg,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-  },
-  noticeText: {
-    fontFamily: appFont,
-    color: colors.dangerText,
-    fontSize: 13,
-    lineHeight: 18,
-  },
   saving: {
     position: 'absolute',
     right: 14,
@@ -2224,44 +1467,6 @@ const styles = StyleSheet.create({
     color: colors.accentText,
     fontSize: 12,
     fontWeight: '900',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(20,28,22,0.28)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  dialog: {
-    width: '100%',
-    maxWidth: 420,
-    maxHeight: '88%',
-    borderRadius: 10,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    gap: 12,
-  },
-  dialogHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  dialogTitle: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 21,
-    fontWeight: '900',
-  },
-  cancelText: {
-    fontFamily: appFont,
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  field: {
-    gap: 6,
   },
   fieldLabel: {
     fontFamily: appFont,
