@@ -59,7 +59,7 @@ export function Field({
         keyboardType={keyboardType}
         placeholder={placeholder}
         maxLength={maxLength}
-        placeholderTextColor="#9aa399"
+        placeholderTextColor="#9CA3AF"
         testID={testID}
       />
     </View>

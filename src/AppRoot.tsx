@@ -563,7 +563,7 @@ export default function AppRoot() {
             value={dayNoteText}
             onChangeText={setDayNoteText}
             placeholder="Например: замена, опоздал, инвентаризация"
-            placeholderTextColor="#9aa399"
+            placeholderTextColor="#9CA3AF"
             multiline
             maxLength={160}
             testID="day-note-comment"
@@ -1238,7 +1238,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     backgroundColor: colors.accent,
     borderWidth: 1,
-    borderColor: '#a5d8bf',
+    borderColor: colors.accentStrong,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1306,7 +1306,7 @@ const styles = StyleSheet.create({
   },
   assignmentRowActive: {
     backgroundColor: colors.accentSoft,
-    borderColor: '#c7e7d5',
+    borderColor: colors.accentStrong,
   },
   employeeManagerList: {
     gap: 8,
@@ -1583,7 +1583,7 @@ const styles = StyleSheet.create({
   },
   historyKind: {
     fontFamily: appFont,
-    color: '#2e7b4f',
+    color: colors.accentStrong,
     fontSize: 11,
     fontWeight: '900',
   },
@@ -1632,7 +1632,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     backgroundColor: colors.accent,
     borderWidth: 1,
-    borderColor: '#a5d8bf',
+    borderColor: colors.accentStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1662,7 +1662,7 @@ const styles = StyleSheet.create({
   },
   paymentTypeButtonActive: {
     backgroundColor: colors.accent,
-    borderColor: colors.accent,
+    borderColor: colors.accentStrong,
   },
   paymentTypeButtonDanger: {
     backgroundColor: colors.dangerBg,
