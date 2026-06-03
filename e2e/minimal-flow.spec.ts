@@ -10,6 +10,72 @@ const RUBLE = '\u20bd';
 const VISIBLE_DATE = '2026-05-31';
 const DAY_NOTE = '\u0437\u0430\u043c\u0435\u043d\u0430';
 
+test('pwa install metadata and service worker are available', async ({ page, request }) => {
+  await page.route('**/api/state', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        location: { id: 'main', name: LOCATION },
+        employees: [],
+        shifts: [],
+        payments: [],
+        dayNotes: [],
+      } satisfies AppState),
+    });
+  });
+
+  await page.goto('/');
+
+  const manifestResponse = await request.get('/manifest.json');
+  expect(manifestResponse.ok()).toBe(true);
+  await expect(manifestResponse.json()).resolves.toEqual({
+    name: 'PVZ Android',
+    short_name: 'PVZ',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#f7f8f5',
+    theme_color: '#a8d5ba',
+    icons: [
+      {
+        src: '/pwa-icon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+      {
+        src: '/pwa-icon-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+    ],
+  });
+
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.json');
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#a8d5ba');
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/pwa-icon-192.png');
+
+  const registration = await page.evaluate(async () => {
+    const serviceWorker = navigator.serviceWorker;
+    if (!serviceWorker) {
+      return null;
+    }
+
+    const readyRegistration = await serviceWorker.ready;
+    const worker = readyRegistration.active ?? readyRegistration.waiting ?? readyRegistration.installing;
+
+    return {
+      scope: readyRegistration.scope,
+      scriptURL: worker?.scriptURL,
+    };
+  });
+
+  expect(registration?.scope).toBe('http://127.0.0.1:8097/');
+  expect(registration?.scriptURL).toBe('http://127.0.0.1:8097/sw.js');
+});
+
 test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.addInitScript((visibleDate) => {
     const fixedNow = `${visibleDate}T12:00:00.000Z`;
