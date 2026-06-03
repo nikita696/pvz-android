@@ -452,7 +452,6 @@ export default function AppRoot() {
               </View>
               <CalendarGrid
                 month={selectedMonth}
-                selectedDate={selectedDate}
                 state={state}
                 onSelect={openAssignment}
               />

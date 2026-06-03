@@ -15,12 +15,11 @@ const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 type CalendarGridProps = {
   month: string;
-  selectedDate: string;
   state: AppState;
   onSelect: (date: string) => void;
 };
 
-export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarGridProps) {
+export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
   const days = getCalendarDays(month);
   const weeks = chunkWeeks(days);
   const [hoveredDay, setHoveredDay] = useState<{ date: string; label: string } | null>(null);
@@ -43,7 +42,6 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
               }
 
               const date = `${month}-${String(day).padStart(2, '0')}`;
-              const selected = selectedDate === date;
               const today = date === TODAY;
               const employeesOnShift = getShiftEmployeesByDate(state, date);
               const dayOff = getDayOffInfo(date);
@@ -61,7 +59,6 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                     styles.dayCell,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
-                    selected && styles.dayCellSelected,
                   ]}
                   onPress={() => onSelect(date)}
                   onHoverIn={() => {
@@ -76,7 +73,6 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                     style={[
                       styles.dayNumberBadge,
                       today && styles.dayNumberBadgeToday,
-                      selected && styles.dayNumberBadgeSelected,
                     ]}
                   >
                     <Text
@@ -85,7 +81,6 @@ export function CalendarGrid({ month, selectedDate, state, onSelect }: CalendarG
                         dayOff && styles.dayTextOff,
                         dayOff?.holiday && styles.dayTextHoliday,
                         today && styles.dayTextToday,
-                        selected && styles.dayTextSelected,
                       ]}
                     >
                       {day}
@@ -163,9 +158,6 @@ const styles = StyleSheet.create({
   dayCellHoliday: {
     backgroundColor: 'transparent',
   },
-  dayCellSelected: {
-    backgroundColor: 'transparent',
-  },
   dayNumberBadge: {
     width: 30,
     height: 30,
@@ -178,20 +170,12 @@ const styles = StyleSheet.create({
     borderColor: colors.text,
     backgroundColor: 'transparent',
   },
-  dayNumberBadgeSelected: {
-    borderWidth: 2,
-    borderColor: colors.text,
-    backgroundColor: 'transparent',
-  },
   dayText: {
     fontFamily: appFont,
     color: colors.text,
     fontSize: 19,
     lineHeight: 24,
     fontWeight: '900',
-  },
-  dayTextSelected: {
-    color: colors.text,
   },
   dayTextOff: {
     color: colors.weekendText,
