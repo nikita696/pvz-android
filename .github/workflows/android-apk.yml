@@ -66,10 +66,10 @@ jobs:
           const file = 'android/app/build.gradle';
           const releaseSigning = [
             '        release {',
-            '            storeFile file(PVZ_UPLOAD_STORE_FILE)',
-            '            storePassword PVZ_UPLOAD_STORE_PASSWORD',
-            '            keyAlias PVZ_UPLOAD_KEY_ALIAS',
-            '            keyPassword PVZ_UPLOAD_KEY_PASSWORD',
+            "            storeFile file(findProperty('PVZ_UPLOAD_STORE_FILE'))",
+            "            storePassword findProperty('PVZ_UPLOAD_STORE_PASSWORD')",
+            "            keyAlias findProperty('PVZ_UPLOAD_KEY_ALIAS')",
+            "            keyPassword findProperty('PVZ_UPLOAD_KEY_PASSWORD')",
             '        }',
           ].join('\n') + '\n';
           let text = fs.readFileSync(file, 'utf8');
