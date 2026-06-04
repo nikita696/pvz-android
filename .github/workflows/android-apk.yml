@@ -24,10 +24,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: gradle
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -41,6 +37,9 @@ jobs:
 
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Configure release signing
         env:
