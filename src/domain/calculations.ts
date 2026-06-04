@@ -49,6 +49,15 @@ export function getEmployeeWorkedShiftCount(
   return state.shifts.filter((shift) => shift.employeeId === employeeId && shift.date <= cutoffDate).length;
 }
 
+export function getEmployeeFirstShiftDate(state: AppState, employeeId: string): string | null {
+  return (
+    state.shifts
+      .filter((shift) => shift.employeeId === employeeId)
+      .map((shift) => shift.date)
+      .sort()[0] ?? null
+  );
+}
+
 export function getDayNoteByDate(state: AppState, date: string): string {
   return state.dayNotes.find((note) => note.date === date)?.comment ?? '';
 }

@@ -254,8 +254,13 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('toggle-selected-day-employees').click();
   await expect(page.getByTestId(`toggle-selected-day-employee-${ANNA}`)).toBeVisible();
   await page.getByTestId(`toggle-selected-day-employee-${ANNA}`).click();
-  await expect(page.getByText('\u0412\u0441\u0435/\u043e\u0442\u0440\u0430\u0431. \u0432 \u043c\u0435\u0441\u044f\u0446\u0435')).toBeVisible();
-  await expect(page.getByText('\u041e\u0442\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u043e \u0434\u043d\u0435\u0439 \u0432\u0441\u0435\u0433\u043e')).toBeVisible();
+  await expect(page.getByText('\u0421\u043c\u0435\u043d', { exact: true })).toBeVisible();
+  await expect(page.getByText('\u0412 \u044d\u0442\u043e\u043c \u043c\u0435\u0441\u044f\u0446\u0435', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 \u0438\u0437 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('\u0417\u0430 \u0432\u0441\u0451 \u0432\u0440\u0435\u043c\u044f', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 \u0441\u043c\u0435\u043d\u0430', { exact: true })).toBeVisible();
+  await expect(page.getByText('\u0422\u0440\u0443\u0434\u043e\u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e', { exact: true })).toBeVisible();
+  await expect(page.getByText('31.05.2026', { exact: true }).first()).toBeVisible();
 
   await page.getByTestId('day-31').click();
   await expect(page.getByTestId('open-day-note')).toBeVisible();

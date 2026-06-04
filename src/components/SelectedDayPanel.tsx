@@ -3,6 +3,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
+  getEmployeeFirstShiftDate,
   getEmployeeMonthShiftCounts,
   getEmployeeWorkedShiftCount,
   hasShift,
@@ -71,6 +72,7 @@ export function SelectedDayPanel({
               {activeEmployees.map((employee) => {
                 const monthShiftCounts = getEmployeeMonthShiftCounts(state, employee.id, selectedMonth);
                 const workedShiftCount = getEmployeeWorkedShiftCount(state, employee.id);
+                const firstShiftDate = getEmployeeFirstShiftDate(state, employee.id);
                 const assigned = hasShift(state, employee.id, selectedDate);
                 const expanded = Boolean(expandedEmployees[employee.id]);
 
@@ -109,15 +111,28 @@ export function SelectedDayPanel({
                     {expanded ? (
                       <View style={styles.selectedEmployeeStats}>
                         <View style={styles.selectedEmployeeStat}>
-                          <Text style={styles.selectedEmployeeStatLabel}>Все/отраб. в месяце</Text>
+                          <View style={styles.selectedEmployeeStatLabelGroup}>
+                            <Text style={styles.selectedEmployeeStatLabel}>Смен</Text>
+                            <Text style={styles.selectedEmployeeStatSubLabel}>В этом месяце</Text>
+                          </View>
                           <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                            {monthShiftCounts.total}/{monthShiftCounts.worked}
+                            {monthShiftCounts.worked} из {monthShiftCounts.total}
                           </Text>
                         </View>
                         <View style={styles.selectedEmployeeStat}>
-                          <Text style={styles.selectedEmployeeStatLabel}>Отработано дней всего</Text>
+                          <View style={styles.selectedEmployeeStatLabelGroup}>
+                            <Text style={styles.selectedEmployeeStatLabel}>За всё время</Text>
+                          </View>
                           <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                            {workedShiftCount}
+                            {formatShiftCount(workedShiftCount)}
+                          </Text>
+                        </View>
+                        <View style={styles.selectedEmployeeStat}>
+                          <View style={styles.selectedEmployeeStatLabelGroup}>
+                            <Text style={styles.selectedEmployeeStatLabel}>Трудоустройство</Text>
+                          </View>
+                          <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
+                            {firstShiftDate ? formatDate(firstShiftDate) : 'нет смен'}
                           </Text>
                         </View>
                       </View>
@@ -271,26 +286,56 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingHorizontal: 18,
-    paddingVertical: 12,
-    gap: 9,
+    paddingVertical: 14,
+    gap: 10,
   },
   selectedEmployeeStat: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 16,
+  },
+  selectedEmployeeStatLabelGroup: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: 5,
   },
   selectedEmployeeStatLabel: {
     fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-  },
-  selectedEmployeeStatValue: {
-    fontFamily: appFont,
+    color: colors.text,
     fontSize: 13,
     lineHeight: 17,
     fontWeight: '900',
   },
+  selectedEmployeeStatSubLabel: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
+  selectedEmployeeStatValue: {
+    fontFamily: appFont,
+    minWidth: 86,
+    textAlign: 'right',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '900',
+  },
 });
+
+function formatDate(date: string): string {
+  const [year, month, day] = date.split('-');
+  return `${day}.${month}.${year}`;
+}
+
+function formatShiftCount(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  const noun = mod10 === 1 && mod100 !== 11 ? 'смена' : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'смены' : 'смен';
+
+  return `${count} ${noun}`;
+}
