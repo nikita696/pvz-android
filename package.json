@@ -34,6 +34,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
     "build": "expo export --platform web --output-dir dist",
+    "build:rustore:apk": "npx eas-cli build --platform android --profile rustore-apk",
+    "build:rustore:aab": "npx eas-cli build --platform android --profile rustore-aab",
     "web:e2e": "npm run build && node scripts/e2e-server.mjs",
     "lint": "eslint .",
     "test:e2e": "playwright test",

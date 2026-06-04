@@ -57,6 +57,12 @@ test('pwa install metadata and service worker are available', async ({ page, req
   await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/pwa-icon-192.png');
 
+  const serviceWorkerResponse = await request.get('/sw.js');
+  expect(serviceWorkerResponse.ok()).toBe(true);
+  const serviceWorker = await serviceWorkerResponse.text();
+  expect(serviceWorker).toContain("const CACHE_NAME = 'pvz-android-shell-v2'");
+  expect(serviceWorker).toContain("request.mode === 'navigate'");
+
   const registration = await page.evaluate(async () => {
     const serviceWorker = navigator.serviceWorker;
     if (!serviceWorker) {

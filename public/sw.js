@@ -1,11 +1,11 @@
 /* global caches, fetch, self, URL */
 
-const CACHE_NAME = 'pvz-android-shell-v1';
-const SHELL_ASSETS = ['/', '/index.html', '/manifest.json', '/pwa-icon-192.png', '/pwa-icon-512.png'];
+const CACHE_NAME = 'pvz-android-shell-v2';
+const PRECACHE_ASSETS = ['/manifest.json', '/pwa-icon-192.png', '/pwa-icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS)).then(() => self.skipWaiting()),
   );
 });
 
@@ -14,7 +14,15 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then((clients) => {
+        clients.forEach((client) => {
+          if ('navigate' in client) {
+            client.navigate(client.url);
+          }
+        });
+      }),
   );
 });
 
@@ -26,21 +34,33 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (request.mode === 'navigate') {
+    event.respondWith(fetchAndCache(request).catch(() => caches.match(request)));
+    return;
+  }
+
+  if (url.pathname.startsWith('/_expo/static/')) {
+    event.respondWith(caches.match(request).then((cachedResponse) => cachedResponse ?? fetchAndCache(request)));
+    return;
+  }
+
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(request).then((networkResponse) => {
-        const responseCopy = networkResponse.clone();
-
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(request, responseCopy);
-        });
-
-        return networkResponse;
-      });
-    }),
+    fetchAndCache(request).catch((error) => caches.match(request).then((cachedResponse) => cachedResponse ?? Promise.reject(error))),
   );
 });
+
+function fetchAndCache(request) {
+  return fetch(request).then((networkResponse) => {
+    if (!networkResponse || networkResponse.status !== 200) {
+      return networkResponse;
+    }
+
+    const responseCopy = networkResponse.clone();
+
+    caches.open(CACHE_NAME).then((cache) => {
+      cache.put(request, responseCopy);
+    });
+
+    return networkResponse;
+  });
+}
