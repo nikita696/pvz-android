@@ -2,10 +2,19 @@ name: Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      variant:
+        description: APK variant to build
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
 
 jobs:
-  build-debug-apk:
-    name: Build debug APK
+  build-apk:
+    name: Build ${{ inputs.variant }} APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -24,6 +33,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -38,13 +51,65 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Build debug APK
+      - name: Configure release signing
+        if: ${{ inputs.variant == 'release' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/rustore-release.jks
+          cat >> android/gradle.properties <<EOF
+          PVZ_UPLOAD_STORE_FILE=rustore-release.jks
+          PVZ_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
+          PVZ_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS
+          PVZ_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
+          EOF
+
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'android/app/build.gradle';
+          const releaseSigning = `        release {
+            storeFile file(PVZ_UPLOAD_STORE_FILE)
+            storePassword PVZ_UPLOAD_STORE_PASSWORD
+            keyAlias PVZ_UPLOAD_KEY_ALIAS
+            keyPassword PVZ_UPLOAD_KEY_PASSWORD
+        }
+          `;
+          let text = fs.readFileSync(file, 'utf8');
+          if (!text.includes('PVZ_UPLOAD_STORE_FILE')) {
+            text = text.replace(
+              /(signingConfigs\s*\{\s*debug\s*\{[\s\S]*?keyPassword 'android'\s*\n\s*}\s*)\n(\s*})/,
+              `$1\n${releaseSigning}$2`
+            );
+          }
+          text = text.replace(
+            /(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/,
+            '$1signingConfig signingConfigs.release'
+          );
+          fs.writeFileSync(file, text);
+          NODE
+
+      - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace --info --no-daemon --console=plain
+        run: |
+          if [ "${{ inputs.variant }}" = "release" ]; then
+            ./gradlew assembleRelease --stacktrace --info --no-daemon --console=plain
+          else
+            ./gradlew assembleDebug --stacktrace --info --no-daemon --console=plain
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: pvz-android-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: pvz-android-${{ inputs.variant }}-apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
