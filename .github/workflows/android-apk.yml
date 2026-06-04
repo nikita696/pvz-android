@@ -14,7 +14,7 @@ on:
 
 jobs:
   build-apk:
-    name: Build ${{ inputs.variant }} APK
+    name: Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -52,7 +52,7 @@ jobs:
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Configure release signing
-        if: ${{ inputs.variant == 'release' }}
+        if: ${{ github.event.inputs.variant != 'debug' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -99,16 +99,16 @@ jobs:
       - name: Build APK
         working-directory: android
         run: |
-          if [ "${{ inputs.variant }}" = "release" ]; then
-            ./gradlew assembleRelease --stacktrace --info --no-daemon --console=plain
-          else
+          if [ "${{ github.event.inputs.variant }}" = "debug" ]; then
             ./gradlew assembleDebug --stacktrace --info --no-daemon --console=plain
+          else
+            ./gradlew assembleRelease --stacktrace --info --no-daemon --console=plain
           fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: pvz-android-${{ inputs.variant }}-apk
+          name: pvz-android-apk
           path: |
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/apk/debug/app-debug.apk
