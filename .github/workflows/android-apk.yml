@@ -65,13 +65,14 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const file = 'android/app/build.gradle';
-          const releaseSigning = `        release {
-            storeFile file(PVZ_UPLOAD_STORE_FILE)
-            storePassword PVZ_UPLOAD_STORE_PASSWORD
-            keyAlias PVZ_UPLOAD_KEY_ALIAS
-            keyPassword PVZ_UPLOAD_KEY_PASSWORD
-        }
-          `;
+          const releaseSigning = [
+            '        release {',
+            '            storeFile file(PVZ_UPLOAD_STORE_FILE)',
+            '            storePassword PVZ_UPLOAD_STORE_PASSWORD',
+            '            keyAlias PVZ_UPLOAD_KEY_ALIAS',
+            '            keyPassword PVZ_UPLOAD_KEY_PASSWORD',
+            '        }',
+          ].join('\n') + '\n';
           let text = fs.readFileSync(file, 'utf8');
           if (!text.includes('PVZ_UPLOAD_STORE_FILE')) {
             text = text.replace(
