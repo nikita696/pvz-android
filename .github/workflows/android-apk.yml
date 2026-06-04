@@ -2,15 +2,6 @@ name: Android APK
 
 on:
   workflow_dispatch:
-    inputs:
-      variant:
-        description: APK variant to build
-        required: true
-        default: release
-        type: choice
-        options:
-          - release
-          - debug
 
 jobs:
   build-apk:
@@ -52,7 +43,6 @@ jobs:
         run: npx expo prebuild --platform android --clean --no-install
 
       - name: Configure release signing
-        if: ${{ github.event.inputs.variant != 'debug' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -98,18 +88,11 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: |
-          if [ "${{ github.event.inputs.variant }}" = "debug" ]; then
-            ./gradlew assembleDebug --stacktrace --info --no-daemon --console=plain
-          else
-            ./gradlew assembleRelease --stacktrace --info --no-daemon --console=plain
-          fi
+        run: ./gradlew assembleRelease --stacktrace --info --no-daemon --console=plain
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: pvz-android-apk
-          path: |
-            android/app/build/outputs/apk/release/app-release.apk
-            android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
