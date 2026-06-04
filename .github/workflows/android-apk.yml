@@ -54,22 +54,17 @@ jobs:
           test -n "$ANDROID_KEY_PASSWORD"
 
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/rustore-release.jks
-          cat >> android/gradle.properties <<EOF
-          PVZ_UPLOAD_STORE_FILE=rustore-release.jks
-          PVZ_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD
-          PVZ_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS
-          PVZ_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD
-          EOF
 
           node <<'NODE'
           const fs = require('fs');
           const file = 'android/app/build.gradle';
+          const quote = (value) => JSON.stringify(value);
           const releaseSigning = [
             '        release {',
-            "            storeFile file(findProperty('PVZ_UPLOAD_STORE_FILE'))",
-            "            storePassword findProperty('PVZ_UPLOAD_STORE_PASSWORD')",
-            "            keyAlias findProperty('PVZ_UPLOAD_KEY_ALIAS')",
-            "            keyPassword findProperty('PVZ_UPLOAD_KEY_PASSWORD')",
+            `            storeFile file(${quote('rustore-release.jks')})`,
+            `            storePassword ${quote(process.env.ANDROID_KEYSTORE_PASSWORD)}`,
+            `            keyAlias ${quote(process.env.ANDROID_KEY_ALIAS)}`,
+            `            keyPassword ${quote(process.env.ANDROID_KEY_PASSWORD)}`,
             '        }',
           ].join('\n') + '\n';
           let text = fs.readFileSync(file, 'utf8');
