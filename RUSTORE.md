@@ -7,8 +7,44 @@
 - Version name: `1.0.0`
 - Version code: `1`
 - Release file options:
+  - EAS preview APK: `eas build -p android --profile preview`
   - APK for device testing: `npm run build:rustore:apk`
   - AAB for store release: `npm run build:rustore:aab`
+
+## Local debug APK
+
+Use this only on a machine with JDK 17 and Android SDK installed.
+
+```powershell
+npx expo prebuild --platform android --clean --no-install
+cd android
+./gradlew assembleDebug --stacktrace --info --no-daemon --console=plain
+```
+
+Expected APK path:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+On Windows PowerShell from the repository root:
+
+```powershell
+cd android
+.\gradlew.bat assembleDebug --stacktrace --info --no-daemon --console=plain
+```
+
+Do not repeatedly restart Gradle/Kotlin without a new error log. If the build stalls before `android/app/build`, prefer EAS Build or GitHub Actions.
+
+## EAS Build
+
+Preferred APK path for this Expo/React Native app:
+
+```powershell
+eas build -p android --profile preview
+```
+
+If the CLI is not logged in, run `eas login` or set `EXPO_TOKEN`.
 
 ## Before upload
 
