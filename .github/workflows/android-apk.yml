@@ -1,11 +1,11 @@
-name: Android APK
+name: Android Release Artifacts
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-apk:
-    name: Build APK
+  build-android:
+    name: Build Android artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -55,6 +55,13 @@ jobs:
 
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/rustore-release.jks
 
+          keytool -exportcert \
+            -alias "$ANDROID_KEY_ALIAS" \
+            -keystore android/app/rustore-release.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -rfc \
+            -file android/app/uploadcert.pem
+
           node <<'NODE'
           const fs = require('fs');
           const file = 'android/app/build.gradle';
@@ -85,9 +92,27 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --stacktrace --info --no-daemon --console=plain
 
+      - name: Build AAB
+        working-directory: android
+        run: ./gradlew bundleRelease --stacktrace --info --no-daemon --console=plain
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: pvz-android-apk
           path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload AAB package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pvz-android-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+      - name: Upload AAB upload certificate
+        uses: actions/upload-artifact@v4
+        with:
+          name: pvz-android-uploadcert
+          path: android/app/uploadcert.pem
           if-no-files-found: error
