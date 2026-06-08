@@ -75,18 +75,34 @@ jobs:
             '        }',
           ].join('\n') + '\n';
           let text = fs.readFileSync(file, 'utf8');
-          if (!text.includes('PVZ_UPLOAD_STORE_FILE')) {
-            text = text.replace(
-              /(signingConfigs\s*\{\s*debug\s*\{[\s\S]*?keyPassword 'android'\s*\n\s*}\s*)\n(\s*})/,
-              `$1\n${releaseSigning}$2`
-            );
+          const signingConfigPattern =
+            /(signingConfigs\s*\{[\s\S]*?debug\s*\{[\s\S]*?keyPassword ['"]android['"]\s*\n\s*}\s*)\n(\s*})/;
+          const buildTypePattern =
+            /(buildTypes\s*\{[\s\S]*?release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/;
+
+          if (!text.includes('storeFile file("rustore-release.jks")')) {
+            if (!signingConfigPattern.test(text)) {
+              throw new Error('Could not find signingConfigs.debug block');
+            }
+
+            text = text.replace(signingConfigPattern, `$1\n${releaseSigning}$2`);
           }
-          text = text.replace(
-            /(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/,
-            '$1signingConfig signingConfigs.release'
-          );
+
+          if (!buildTypePattern.test(text)) {
+            throw new Error('Could not find release buildType debug signing config');
+          }
+
+          text = text.replace(buildTypePattern, '$1signingConfig signingConfigs.release');
+
+          if (!text.includes('signingConfig signingConfigs.release')) {
+            throw new Error('Release buildType still does not use release signing');
+          }
+
           fs.writeFileSync(file, text);
           NODE
+
+          grep -q "rustore-release.jks" android/app/build.gradle
+          grep -q "signingConfig signingConfigs.release" android/app/build.gradle
 
       - name: Build APK
         working-directory: android
@@ -95,6 +111,24 @@ jobs:
       - name: Build AAB
         working-directory: android
         run: ./gradlew bundleRelease --stacktrace --info --no-daemon --console=plain
+
+      - name: Verify AAB signing
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+
+          zip -d "$AAB" "META-INF/*" || true
+          jarsigner \
+            -keystore android/app/rustore-release.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -keypass "$ANDROID_KEY_PASSWORD" \
+            "$AAB" \
+            "$ANDROID_KEY_ALIAS"
+          jarsigner -verify -certs "$AAB"
+          keytool -printcert -jarfile "$AAB" | grep "CN=PVZ Android Upload"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
