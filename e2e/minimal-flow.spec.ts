@@ -14,6 +14,27 @@ const TEST_TOKEN = 'test-token';
 const EMPTY_TOKEN = 'empty-token';
 const INVITE_TOKEN = 'invite-token';
 const NICK = '\u041d\u0438\u043a';
+const ONBOARDING_TITLE = '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u041f\u0412\u0417';
+const ONBOARDING_SUBTITLE =
+  '\u0421\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u0433\u0440\u0430\u0444\u0438\u043a \u0438\u043b\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0435\u043c\u0443 \u041f\u0412\u0417 \u043f\u043e \u043a\u043e\u0434\u0443 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.';
+const INVITE_CODE_LABEL = '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f';
+const INVITE_CODE_PLACEHOLDER = '\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440, PVZ-1234';
+const INVITE_CODE_HINT =
+  '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0443 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430 \u041f\u0412\u0417.';
+const CONNECT_BUTTON = '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f';
+const CREATE_WORKSPACE_BUTTON = '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043d\u043e\u0432\u044b\u0439 \u041f\u0412\u0417';
+const EMPTY_CODE_ERROR = '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.';
+const INVALID_CODE_ERROR =
+  '\u041a\u043e\u0434 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0438\u043b\u0438 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442.';
+const NETWORK_ERROR =
+  '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u0438 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.';
+const INTERNAL_ONBOARDING_COPY = [
+  NICK,
+  '\u043a\u043e\u043c\u0430\u043d\u0434\u044b \u041d\u0438\u043a\u0430',
+  '\u0447\u0443\u0436\u0438\u0445 \u0441\u043c\u0435\u043d',
+  '\u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u041f\u0412\u0417',
+  '\u043f\u0443\u0441\u0442\u043e\u0439 \u041f\u0412\u0417',
+];
 
 test('pwa install metadata and service worker are available', async ({ page, request }) => {
   await page.route('**/api/state', async (route) => {
@@ -98,10 +119,49 @@ test('fresh install starts with onboarding and no real workspace data', async ({
 
   await page.goto('/');
 
+  await expect(page.getByText(ONBOARDING_TITLE)).toBeVisible();
+  await expect(page.getByText(ONBOARDING_SUBTITLE)).toBeVisible();
+  await expect(page.getByText(INVITE_CODE_LABEL, { exact: true })).toBeVisible();
+  await expect(page.getByText(INVITE_CODE_HINT)).toBeVisible();
   await expect(page.getByTestId('invite-code-input')).toBeVisible();
+  await expect(page.getByTestId('invite-code-input')).toHaveAttribute('placeholder', INVITE_CODE_PLACEHOLDER);
+  await expect(page.getByText(CONNECT_BUTTON, { exact: true })).toBeVisible();
+  await expect(page.getByText(CREATE_WORKSPACE_BUTTON, { exact: true })).toBeVisible();
   await expect(page.getByTestId('create-workspace')).toBeVisible();
-  await expect(page.getByText(NICK, { exact: true })).toHaveCount(0);
+  for (const internalCopy of INTERNAL_ONBOARDING_COPY) {
+    await expect(page.getByText(internalCopy)).toHaveCount(0);
+  }
   expect(stateRequested).toBe(false);
+});
+
+test('invite onboarding shows neutral validation errors', async ({ page }) => {
+  let inviteRequested = false;
+
+  await page.route('**/api/invites/claim', async (route) => {
+    inviteRequested = true;
+    await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'INVALID_INVITE_CODE' }) });
+  });
+
+  await page.goto('/');
+  await page.getByTestId('claim-invite-code').click();
+  await expect(page.getByText(EMPTY_CODE_ERROR)).toBeVisible();
+  expect(inviteRequested).toBe(false);
+
+  await page.getByTestId('invite-code-input').fill('PVZ-WRONG');
+  await page.getByTestId('claim-invite-code').click();
+  await expect(page.getByText(INVALID_CODE_ERROR)).toBeVisible();
+});
+
+test('invite onboarding shows a neutral network error', async ({ page }) => {
+  await page.route('**/api/invites/claim', async (route) => {
+    await route.abort('failed');
+  });
+
+  await page.goto('/');
+  await page.getByTestId('invite-code-input').fill('PVZ-CODE');
+  await page.getByTestId('claim-invite-code').click();
+
+  await expect(page.getByText(NETWORK_ERROR)).toBeVisible();
 });
 
 test('creating an empty workspace opens an isolated blank schedule', async ({ page }) => {

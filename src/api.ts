@@ -6,6 +6,8 @@ const nativeApiBaseUrl = 'https://pvz-android.vercel.app';
 const apiBaseUrl =
   process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ??
   (Platform.OS === 'web' ? '' : nativeApiBaseUrl);
+const NETWORK_ERROR_MESSAGE =
+  '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u0438 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.';
 
 type WorkspacePayload = {
   token: string;
@@ -23,7 +25,7 @@ export class ApiRequestError extends Error {
 }
 
 export async function fetchState(token: string): Promise<AppState> {
-  const response = await fetch(`${apiBaseUrl}/api/state`, {
+  const response = await fetchApi(`${apiBaseUrl}/api/state`, {
     headers: getAuthHeaders(token),
   });
 
@@ -35,7 +37,7 @@ export async function fetchState(token: string): Promise<AppState> {
 }
 
 export async function sendAction(token: string, action: ApiAction): Promise<AppState> {
-  const response = await fetch(`${apiBaseUrl}/api/state`, {
+  const response = await fetchApi(`${apiBaseUrl}/api/state`, {
     method: 'POST',
     headers: { ...getAuthHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify(action),
@@ -49,7 +51,7 @@ export async function sendAction(token: string, action: ApiAction): Promise<AppS
 }
 
 export async function createWorkspace(): Promise<WorkspacePayload> {
-  const response = await fetch(`${apiBaseUrl}/api/workspaces`, {
+  const response = await fetchApi(`${apiBaseUrl}/api/workspaces`, {
     method: 'POST',
   });
 
@@ -61,7 +63,7 @@ export async function createWorkspace(): Promise<WorkspacePayload> {
 }
 
 export async function claimInvite(code: string): Promise<WorkspacePayload> {
-  const response = await fetch(`${apiBaseUrl}/api/invites/claim`, {
+  const response = await fetchApi(`${apiBaseUrl}/api/invites/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
@@ -78,6 +80,14 @@ function getAuthHeaders(token: string) {
   return {
     Authorization: `Bearer ${token}`,
   };
+}
+
+async function fetchApi(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch {
+    throw new ApiRequestError(NETWORK_ERROR_MESSAGE, 0, 'NETWORK_ERROR');
+  }
 }
 
 async function getApiCode(response: Response): Promise<string> {
@@ -98,11 +108,11 @@ async function getApiError(response: Response): Promise<string> {
     }
 
     if (payload.error === 'UNAUTHORIZED') {
-      return '\u0421\u0435\u0441\u0441\u0438\u044f \u041f\u0412\u0417 \u0443\u0441\u0442\u0430\u0440\u0435\u043b\u0430. \u0412\u0432\u0435\u0434\u0438 invite-\u043a\u043e\u0434 \u0438\u043b\u0438 \u0441\u043e\u0437\u0434\u0430\u0439 \u043f\u0443\u0441\u0442\u043e\u0439 \u041f\u0412\u0417.';
+      return '\u041d\u0443\u0436\u043d\u043e \u0441\u043d\u043e\u0432\u0430 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u041f\u0412\u0417.';
     }
 
     if (payload.error === 'INVALID_INVITE_CODE') {
-      return '\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 invite-\u043a\u043e\u0434.';
+      return '\u041a\u043e\u0434 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0438\u043b\u0438 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442.';
     }
 
     if (payload.error === 'CONFIG_MISSING') {
