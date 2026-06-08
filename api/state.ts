@@ -1,7 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import {
+  ConfigMissingError,
+  InvalidInviteCodeError,
   MissingDatabaseUrlError,
+  UnauthorizedError,
   addEmployee,
   addPayment,
   archiveEmployee,
@@ -12,13 +15,16 @@ import {
   toggleShift,
   updateLocationName,
   updatePayment,
+  requireWorkspaceSession,
 } from './_db';
 import type { ApiAction } from '../src/domain/types';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    const workspaceId = await requireWorkspaceSession(readBearerToken(req));
+
     if (req.method === 'GET') {
-      res.status(200).json(await getState());
+      res.status(200).json(await getState(workspaceId));
       return;
     }
 
@@ -29,14 +35,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const body = readAction(req.body);
-    await applyAction(body);
-    res.status(200).json(await getState());
+    await applyAction(workspaceId, body);
+    res.status(200).json(await getState(workspaceId));
   } catch (error) {
     if (error instanceof MissingDatabaseUrlError) {
       res.status(503).json({
         error: 'DATABASE_URL_MISSING',
         message: 'Set DATABASE_URL to a Neon Postgres connection string.',
       });
+      return;
+    }
+
+    if (error instanceof UnauthorizedError) {
+      res.status(401).json({ error: 'UNAUTHORIZED' });
+      return;
+    }
+
+    if (error instanceof InvalidInviteCodeError) {
+      res.status(403).json({ error: 'INVALID_INVITE_CODE' });
+      return;
+    }
+
+    if (error instanceof ConfigMissingError) {
+      res.status(503).json({ error: 'CONFIG_MISSING' });
       return;
     }
 
@@ -57,7 +78,18 @@ function readAction(body: unknown): ApiAction {
   return body as ApiAction;
 }
 
-async function applyAction(body: ApiAction) {
+function readBearerToken(req: VercelRequest): string | null {
+  const header = req.headers.authorization;
+  const value = Array.isArray(header) ? header[0] : header;
+
+  if (!value?.startsWith('Bearer ')) {
+    return null;
+  }
+
+  return value.slice('Bearer '.length).trim() || null;
+}
+
+async function applyAction(workspaceId: string, body: ApiAction) {
   if (!body || typeof body.action !== 'string') {
     throw new Error('BAD_REQUEST');
   }
@@ -67,7 +99,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await addEmployee(body.name.trim(), body.dailyRate);
+    await addEmployee(workspaceId, body.name.trim(), body.dailyRate);
     return;
   }
 
@@ -76,7 +108,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await updateLocationName(body.name.trim());
+    await updateLocationName(workspaceId, body.name.trim());
     return;
   }
 
@@ -85,7 +117,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await archiveEmployee(body.employeeId);
+    await archiveEmployee(workspaceId, body.employeeId);
     return;
   }
 
@@ -94,7 +126,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await deleteArchivedEmployee(body.employeeId);
+    await deleteArchivedEmployee(workspaceId, body.employeeId);
     return;
   }
 
@@ -103,7 +135,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await toggleShift(body.employeeId, body.date);
+    await toggleShift(workspaceId, body.employeeId, body.date);
     return;
   }
 
@@ -114,7 +146,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await saveDayNote(body.date, comment);
+    await saveDayNote(workspaceId, body.date, comment);
     return;
   }
 
@@ -132,7 +164,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await addPayment(body.employeeId, body.amount, body.paidAt, kind, comment);
+    await addPayment(workspaceId, body.employeeId, body.amount, body.paidAt, kind, comment);
     return;
   }
 
@@ -151,7 +183,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await updatePayment(body.id, body.employeeId, body.amount, body.paidAt, kind, comment);
+    await updatePayment(workspaceId, body.id, body.employeeId, body.amount, body.paidAt, kind, comment);
     return;
   }
 
@@ -160,7 +192,7 @@ async function applyAction(body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await deletePayment(body.id, body.employeeId);
+    await deletePayment(workspaceId, body.id, body.employeeId);
     return;
   }
 

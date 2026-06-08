@@ -9,6 +9,11 @@ const IRA = '\u0418\u0440\u0430';
 const RUBLE = '\u20bd';
 const VISIBLE_DATE = '2026-05-31';
 const DAY_NOTE = '\u0437\u0430\u043c\u0435\u043d\u0430';
+const TOKEN_KEY = 'pvz.workspaceToken';
+const TEST_TOKEN = 'test-token';
+const EMPTY_TOKEN = 'empty-token';
+const INVITE_TOKEN = 'invite-token';
+const NICK = '\u041d\u0438\u043a';
 
 test('pwa install metadata and service worker are available', async ({ page, request }) => {
   await page.route('**/api/state', async (route) => {
@@ -26,6 +31,7 @@ test('pwa install metadata and service worker are available', async ({ page, req
   });
 
   await page.goto('/');
+  await expect(page.getByTestId('create-workspace')).toBeVisible();
 
   const manifestResponse = await request.get('/manifest.json');
   expect(manifestResponse.ok()).toBe(true);
@@ -82,6 +88,122 @@ test('pwa install metadata and service worker are available', async ({ page, req
   expect(registration?.scriptURL).toBe('http://127.0.0.1:8097/sw.js');
 });
 
+test('fresh install starts with onboarding and no real workspace data', async ({ page }) => {
+  let stateRequested = false;
+
+  await page.route('**/api/state', async (route) => {
+    stateRequested = true;
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'UNEXPECTED' }) });
+  });
+
+  await page.goto('/');
+
+  await expect(page.getByTestId('invite-code-input')).toBeVisible();
+  await expect(page.getByTestId('create-workspace')).toBeVisible();
+  await expect(page.getByText(NICK, { exact: true })).toHaveCount(0);
+  expect(stateRequested).toBe(false);
+});
+
+test('creating an empty workspace opens an isolated blank schedule', async ({ page }) => {
+  let serverState: AppState = {
+    location: { id: 'main', name: LOCATION },
+    employees: [],
+    shifts: [],
+    payments: [],
+    dayNotes: [],
+  };
+
+  await page.route('**/api/workspaces', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ token: EMPTY_TOKEN, state: serverState }),
+    });
+  });
+  await page.route('**/api/state', async (route) => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${EMPTY_TOKEN}`);
+    const action = JSON.parse(route.request().postData() ?? '{}') as ApiAction;
+
+    if (action.action === 'addEmployee') {
+      serverState = {
+        ...serverState,
+        employees: [
+          ...serverState.employees,
+          {
+            id: 'emp-empty',
+            name: action.name,
+            dailyRate: action.dailyRate,
+            color: '#a8d5ba',
+            active: true,
+            createdAt: '2026-05-31T00:00:00.000Z',
+          },
+        ],
+      };
+    }
+
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(serverState) });
+  });
+
+  await page.goto('/');
+  await expect(page.getByTestId('create-workspace')).toBeVisible();
+  await page.getByTestId('create-workspace').click();
+  await expect(page.getByText(LOCATION)).toBeVisible();
+  await expect(page.getByText(NICK, { exact: true })).toHaveCount(0);
+
+  await page.getByTestId('open-employees').click();
+  await page.getByTestId('employee-name').fill(IRA);
+  await page.getByTestId('employee-rate').fill('3000');
+  await page.getByTestId('save-employee').click();
+
+  await expect(page.getByText(IRA).first()).toBeVisible();
+});
+
+test('invite code connects to the private PVZ workspace', async ({ page }) => {
+  const nickState: AppState = {
+    location: { id: 'main', name: LOCATION },
+    employees: [
+      {
+        id: 'emp-nick',
+        name: NICK,
+        dailyRate: 2500,
+        color: '#a8d5ba',
+        active: true,
+        createdAt: '2026-05-01T00:00:00.000Z',
+      },
+    ],
+    shifts: [],
+    payments: [],
+    dayNotes: [],
+  };
+
+  await page.route('**/api/invites/claim', async (route) => {
+    expect(JSON.parse(route.request().postData() ?? '{}')).toEqual({ code: 'PVZ-CODE' });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ token: INVITE_TOKEN, state: nickState }),
+    });
+  });
+  await page.route('**/api/state', async (route) => {
+    expect(route.request().headers().authorization).toBe(`Bearer ${INVITE_TOKEN}`);
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(nickState) });
+  });
+
+  await page.goto('/');
+  await expect(page.getByTestId('invite-code-input')).toBeVisible();
+  await page.getByTestId('invite-code-input').fill('PVZ-CODE');
+  await expect(page.getByTestId('invite-code-input')).toHaveValue('PVZ-CODE');
+  await page.getByTestId('claim-invite-code').click();
+
+  await expect(page.getByText(LOCATION)).toBeVisible();
+  await page.getByTestId('open-employees').click();
+  await expect(page.getByTestId(`archive-employee-${NICK}`)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(LOCATION)).toBeVisible();
+  await page.getByTestId('open-employees').click();
+  await expect(page.getByTestId(`archive-employee-${NICK}`)).toBeVisible();
+});
+
 test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.addInitScript((visibleDate) => {
     const fixedNow = `${visibleDate}T12:00:00.000Z`;
@@ -99,6 +221,12 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
     window.Date = MockDate as DateConstructor;
   }, VISIBLE_DATE);
+  await page.addInitScript(
+    ({ key, token }) => {
+      window.localStorage.setItem(key, token);
+    },
+    { key: TOKEN_KEY, token: TEST_TOKEN },
+  );
 
   let serverState: AppState = {
     location: { id: 'main', name: LOCATION },
@@ -128,6 +256,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
   await page.route('**/api/state', async (route) => {
     const request = route.request();
+    expect(request.headers().authorization).toBe(`Bearer ${TEST_TOKEN}`);
 
     if (request.method() === 'GET') {
       await route.fulfill({

@@ -2,12 +2,33 @@ import { neon } from '@neondatabase/serverless';
 
 import type { AppState, DayNote, Employee, PaymentKind, SalaryPayment, Shift } from '../src/domain/types';
 
-const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
+const DEFAULT_LOCATION = { id: 'main', name: '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043f\u0443\u043d\u043a\u0442' };
+const DEFAULT_WORKSPACE_NAME = 'PVZ workspace';
 const EMPLOYEE_COLORS = ['#7c3aed', '#0e7490', '#b45309', '#047857', '#4f46e5', '#2563eb'];
+
+type Sql = ReturnType<typeof getSql>;
 
 export class MissingDatabaseUrlError extends Error {
   constructor() {
     super('DATABASE_URL is not configured');
+  }
+}
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('UNAUTHORIZED');
+  }
+}
+
+export class InvalidInviteCodeError extends Error {
+  constructor() {
+    super('INVALID_INVITE_CODE');
+  }
+}
+
+export class ConfigMissingError extends Error {
+  constructor() {
+    super('CONFIG_MISSING');
   }
 }
 
@@ -21,9 +42,33 @@ function getSql() {
   return neon(databaseUrl);
 }
 
+function getDefaultWorkspaceId() {
+  return process.env.PVZ_DEFAULT_WORKSPACE_ID?.trim() || 'nick-main';
+}
+
 export async function ensureSchema() {
   const sql = getSql();
+  const defaultWorkspaceId = getDefaultWorkspaceId();
 
+  await sql`
+    create table if not exists workspaces (
+      id text primary key,
+      name text not null,
+      created_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    create table if not exists workspace_sessions (
+      token text primary key,
+      workspace_id text not null references workspaces(id) on delete cascade,
+      created_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    insert into workspaces (id, name)
+    values (${defaultWorkspaceId}, ${DEFAULT_WORKSPACE_NAME})
+    on conflict (id) do nothing
+  `;
   await sql`
     create table if not exists locations (
       id text primary key,
@@ -66,6 +111,11 @@ export async function ensureSchema() {
       updated_at timestamptz not null default now()
     )
   `;
+  await addWorkspaceColumn(sql, 'locations', defaultWorkspaceId);
+  await addWorkspaceColumn(sql, 'employees', defaultWorkspaceId);
+  await addWorkspaceColumn(sql, 'shifts', defaultWorkspaceId);
+  await addWorkspaceColumn(sql, 'salary_payments', defaultWorkspaceId);
+  await addWorkspaceColumn(sql, 'day_notes', defaultWorkspaceId);
   await sql`
     alter table salary_payments
     add column if not exists kind text not null default 'payment'
@@ -74,44 +124,161 @@ export async function ensureSchema() {
     alter table salary_payments
     add column if not exists note text not null default ''
   `;
+  await ensureDayNotesPrimaryKey(sql);
   await sql`
-    insert into locations (id, name)
-    values (${DEFAULT_LOCATION.id}, ${DEFAULT_LOCATION.name})
+    insert into locations (id, workspace_id, name)
+    select ${DEFAULT_LOCATION.id}, ${defaultWorkspaceId}, ${DEFAULT_LOCATION.name}
+    where not exists (
+      select 1 from locations where workspace_id = ${defaultWorkspaceId}
+    )
     on conflict (id) do nothing
   `;
 }
 
-export async function getState(): Promise<AppState> {
+async function addWorkspaceColumn(sql: Sql, tableName: string, defaultWorkspaceId: string) {
+  await sql.query(`alter table ${tableName} add column if not exists workspace_id text`);
+  await sql.query(`update ${tableName} set workspace_id = $1 where workspace_id is null`, [defaultWorkspaceId]);
+  await sql.query(`alter table ${tableName} alter column workspace_id set not null`);
+}
+
+async function ensureDayNotesPrimaryKey(sql: Sql) {
+  await sql`
+    do $$
+    begin
+      if not exists (
+        select 1
+        from pg_constraint
+        where conrelid = 'day_notes'::regclass
+          and conname = 'day_notes_pkey'
+          and pg_get_constraintdef(oid) = 'PRIMARY KEY (workspace_id, work_date)'
+      ) then
+        alter table day_notes drop constraint if exists day_notes_pkey;
+        alter table day_notes add constraint day_notes_pkey primary key (workspace_id, work_date);
+      end if;
+    end $$;
+  `;
+}
+
+export async function requireWorkspaceSession(token: string | null): Promise<string> {
+  if (!token) {
+    throw new UnauthorizedError();
+  }
+
+  const sql = getSql();
+  await ensureSchema();
+  const rows = await sql`
+    select workspace_id
+    from workspace_sessions
+    where token = ${token}
+    limit 1
+  `;
+  const workspaceId = rows[0]?.workspace_id;
+
+  if (!workspaceId) {
+    throw new UnauthorizedError();
+  }
+
+  return String(workspaceId);
+}
+
+export async function createWorkspace(): Promise<{ token: string; state: AppState }> {
+  const sql = getSql();
+  await ensureSchema();
+
+  const workspaceId = `workspace-${crypto.randomUUID()}`;
+  await sql`
+    insert into workspaces (id, name)
+    values (${workspaceId}, ${DEFAULT_WORKSPACE_NAME})
+  `;
+  await sql`
+    insert into locations (id, workspace_id, name)
+    values (${locationRowId(workspaceId)}, ${workspaceId}, ${DEFAULT_LOCATION.name})
+  `;
+
+  const token = await createSession(sql, workspaceId);
+  return { token, state: await getState(workspaceId) };
+}
+
+export async function claimInvite(code: string): Promise<{ token: string; state: AppState }> {
+  const inviteCode = process.env.PVZ_INVITE_CODE;
+
+  if (!inviteCode?.trim()) {
+    throw new ConfigMissingError();
+  }
+
+  if (normalizeInviteCode(code) !== normalizeInviteCode(inviteCode)) {
+    throw new InvalidInviteCodeError();
+  }
+
+  const sql = getSql();
+  await ensureSchema();
+  const workspaceId = getDefaultWorkspaceId();
+  const token = await createSession(sql, workspaceId);
+  return { token, state: await getState(workspaceId) };
+}
+
+async function createSession(sql: Sql, workspaceId: string) {
+  const token = crypto.randomUUID();
+  await sql`
+    insert into workspace_sessions (token, workspace_id)
+    values (${token}, ${workspaceId})
+  `;
+
+  return token;
+}
+
+function normalizeInviteCode(code: string) {
+  return code.trim().replace(/\s+/g, '').toUpperCase();
+}
+
+export async function getState(workspaceId: string): Promise<AppState> {
   const sql = getSql();
   await ensureSchema();
 
   const [locationRows, employeeRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
-    sql`select id, name from locations where id = ${DEFAULT_LOCATION.id} limit 1`,
+    sql`
+      select id, name
+      from locations
+      where workspace_id = ${workspaceId}
+      order by case when id = ${DEFAULT_LOCATION.id} then 0 else 1 end
+      limit 1
+    `,
     sql`
       select id, name, daily_rate, active, created_at
       from employees
+      where workspace_id = ${workspaceId}
       order by active desc, created_at asc
     `,
     sql`
       select id, employee_id, to_char(work_date, 'YYYY-MM-DD') as work_date
       from shifts
+      where workspace_id = ${workspaceId}
       order by work_date asc, created_at asc
     `,
     sql`
       select id, employee_id, amount, kind, note, to_char(paid_at, 'YYYY-MM-DD') as paid_at
       from salary_payments
+      where workspace_id = ${workspaceId}
       order by paid_at asc, created_at asc
     `,
     sql`
       select to_char(work_date, 'YYYY-MM-DD') as work_date, note, updated_at
       from day_notes
+      where workspace_id = ${workspaceId}
       order by work_date asc
     `,
   ]);
 
+  if (!locationRows.length) {
+    await sql`
+      insert into locations (id, workspace_id, name)
+      values (${locationRowId(workspaceId)}, ${workspaceId}, ${DEFAULT_LOCATION.name})
+    `;
+  }
+
   return {
     location: {
-      id: String(locationRows[0]?.id ?? DEFAULT_LOCATION.id),
+      id: DEFAULT_LOCATION.id,
       name: String(locationRows[0]?.name ?? DEFAULT_LOCATION.name),
     },
     employees: employeeRows.map((row): Employee => ({
@@ -143,53 +310,67 @@ export async function getState(): Promise<AppState> {
   };
 }
 
-export async function addEmployee(name: string, dailyRate: number) {
+export async function addEmployee(workspaceId: string, name: string, dailyRate: number) {
   const sql = getSql();
   await ensureSchema();
   await sql`
-    insert into employees (id, name, daily_rate)
-    values (${crypto.randomUUID()}, ${name}, ${Math.round(dailyRate)})
+    insert into employees (id, workspace_id, name, daily_rate)
+    values (${crypto.randomUUID()}, ${workspaceId}, ${name}, ${Math.round(dailyRate)})
   `;
 }
 
-export async function updateLocationName(name: string) {
+export async function updateLocationName(workspaceId: string, name: string) {
   const sql = getSql();
   await ensureSchema();
+  const rows = await sql`
+    update locations
+    set name = ${name}
+    where workspace_id = ${workspaceId}
+    returning id
+  `;
+
+  if (rows.length) {
+    return;
+  }
+
   await sql`
-    insert into locations (id, name)
-    values (${DEFAULT_LOCATION.id}, ${name})
-    on conflict (id) do update
-    set name = excluded.name
+    insert into locations (id, workspace_id, name)
+    values (${locationRowId(workspaceId)}, ${workspaceId}, ${name})
   `;
 }
 
-export async function archiveEmployee(employeeId: string) {
+export async function archiveEmployee(workspaceId: string, employeeId: string) {
   const sql = getSql();
   await ensureSchema();
   await sql`
     update employees
     set active = false
     where id = ${employeeId}
+      and workspace_id = ${workspaceId}
   `;
 }
 
-export async function deleteArchivedEmployee(employeeId: string) {
+export async function deleteArchivedEmployee(workspaceId: string, employeeId: string) {
   const sql = getSql();
   await ensureSchema();
   await sql`
     delete from employees
     where id = ${employeeId}
+      and workspace_id = ${workspaceId}
       and active = false
   `;
 }
 
-export async function toggleShift(employeeId: string, date: string) {
+export async function toggleShift(workspaceId: string, employeeId: string, date: string) {
   const sql = getSql();
   await ensureSchema();
+  await requireEmployee(sql, workspaceId, employeeId);
+
   const existing = await sql`
     select id
     from shifts
     where employee_id = ${employeeId}
+      and workspace_id = ${workspaceId}
       and work_date = ${date}
     limit 1
   `;
@@ -198,17 +379,18 @@ export async function toggleShift(employeeId: string, date: string) {
     await sql`
       delete from shifts
       where id = ${String(existing[0].id)}
+        and workspace_id = ${workspaceId}
     `;
     return;
   }
 
   await sql`
-    insert into shifts (id, employee_id, work_date)
-    values (${crypto.randomUUID()}, ${employeeId}, ${date})
+    insert into shifts (id, workspace_id, employee_id, work_date)
+    values (${crypto.randomUUID()}, ${workspaceId}, ${employeeId}, ${date})
   `;
 }
 
-export async function saveDayNote(date: string, comment: string) {
+export async function saveDayNote(workspaceId: string, date: string, comment: string) {
   const sql = getSql();
   await ensureSchema();
   const note = comment.trim();
@@ -216,21 +398,23 @@ export async function saveDayNote(date: string, comment: string) {
   if (!note) {
     await sql`
       delete from day_notes
-      where work_date = ${date}
+      where workspace_id = ${workspaceId}
+        and work_date = ${date}
     `;
     return;
   }
 
   await sql`
-    insert into day_notes (work_date, note)
-    values (${date}, ${note})
-    on conflict (work_date) do update
+    insert into day_notes (workspace_id, work_date, note)
+    values (${workspaceId}, ${date}, ${note})
+    on conflict (workspace_id, work_date) do update
     set note = excluded.note,
         updated_at = now()
   `;
 }
 
 export async function addPayment(
+  workspaceId: string,
   employeeId: string,
   amount: number,
   paidAt: string,
@@ -239,13 +423,15 @@ export async function addPayment(
 ) {
   const sql = getSql();
   await ensureSchema();
+  await requireEmployee(sql, workspaceId, employeeId);
   await sql`
-    insert into salary_payments (id, employee_id, amount, paid_at, kind, note)
-    values (${crypto.randomUUID()}, ${employeeId}, ${Math.round(amount)}, ${paidAt}, ${kind}, ${comment})
+    insert into salary_payments (id, workspace_id, employee_id, amount, paid_at, kind, note)
+    values (${crypto.randomUUID()}, ${workspaceId}, ${employeeId}, ${Math.round(amount)}, ${paidAt}, ${kind}, ${comment})
   `;
 }
 
 export async function updatePayment(
+  workspaceId: string,
   id: string,
   employeeId: string,
   amount: number,
@@ -255,6 +441,7 @@ export async function updatePayment(
 ) {
   const sql = getSql();
   await ensureSchema();
+  await requireEmployee(sql, workspaceId, employeeId);
   await sql`
     update salary_payments
     set amount = ${Math.round(amount)},
@@ -263,17 +450,37 @@ export async function updatePayment(
         note = ${comment}
     where id = ${id}
       and employee_id = ${employeeId}
+      and workspace_id = ${workspaceId}
   `;
 }
 
-export async function deletePayment(id: string, employeeId: string) {
+export async function deletePayment(workspaceId: string, id: string, employeeId: string) {
   const sql = getSql();
   await ensureSchema();
   await sql`
     delete from salary_payments
     where id = ${id}
       and employee_id = ${employeeId}
+      and workspace_id = ${workspaceId}
   `;
+}
+
+async function requireEmployee(sql: Sql, workspaceId: string, employeeId: string) {
+  const rows = await sql`
+    select id
+    from employees
+    where id = ${employeeId}
+      and workspace_id = ${workspaceId}
+    limit 1
+  `;
+
+  if (!rows.length) {
+    throw new Error('BAD_REQUEST');
+  }
+}
+
+function locationRowId(workspaceId: string) {
+  return `location:${workspaceId}`;
 }
 
 function getEmployeeColor(employeeId: string): string {

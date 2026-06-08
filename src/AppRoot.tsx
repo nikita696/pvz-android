@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { fetchState, sendAction } from './api';
+import { ApiRequestError, claimInvite, createWorkspace, fetchState, sendAction } from './api';
 import { CalendarGrid } from './components/CalendarGrid';
 import { MonthStepper } from './components/MonthStepper';
 import { SelectedDayPanel } from './components/SelectedDayPanel';
@@ -36,6 +36,7 @@ import {
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
 import type { ApiAction, AppState, Employee, PaymentKind, SalaryPayment } from './domain/types';
+import { clearSessionToken, getStoredSessionToken, saveSessionToken } from './sessionToken';
 import { appFont, colors } from './ui/theme';
 
 const MONTH_NAMES = [
@@ -52,6 +53,18 @@ const MONTH_NAMES = [
   'ноябрь',
   'декабрь',
 ];
+const ONBOARDING_TEXT = {
+  title: '\u041f\u0412\u0417 \u0431\u0435\u0437 \u0447\u0443\u0436\u0438\u0445 \u0441\u043c\u0435\u043d',
+  subtitle:
+    '\u041d\u043e\u0432\u044b\u0439 \u041f\u0412\u0417 \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442 \u043f\u0443\u0441\u0442\u044b\u043c. \u0415\u0441\u043b\u0438 \u0442\u044b \u0438\u0437 \u043a\u043e\u043c\u0430\u043d\u0434\u044b \u041d\u0438\u043a\u0430, \u0432\u0432\u0435\u0434\u0438 invite-\u043a\u043e\u0434.',
+  codeLabel: 'Invite-\u043a\u043e\u0434',
+  codePlaceholder: 'PVZ-...',
+  claim: '\u0412\u043e\u0439\u0442\u0438 \u0432 \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u041f\u0412\u0417',
+  create: '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043f\u0443\u0441\u0442\u043e\u0439 \u041f\u0412\u0417',
+  missingCode: '\u0412\u0432\u0435\u0434\u0438 invite-\u043a\u043e\u0434.',
+  loading: '\u0418\u0449\u0443 \u0441\u0435\u0441\u0441\u0438\u044e \u041f\u0412\u0417',
+  saveFailed: '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0442\u043e\u043a\u0435\u043d \u041f\u0412\u0417.',
+};
 
 type DialogName =
   | 'assign'
@@ -89,6 +102,9 @@ export default function AppRoot() {
   const [paymentComment, setPaymentComment] = useState('');
   const [paymentDateText, setPaymentDateText] = useState(formatDate(TODAY));
   const [dayNoteText, setDayNoteText] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [onboarding, setOnboarding] = useState(false);
   const [selectedDayEmployeesOpen, setSelectedDayEmployeesOpen] = useState(false);
   const [expandedSelectedDayEmployees, setExpandedSelectedDayEmployees] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -129,7 +145,7 @@ export default function AppRoot() {
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
 
   useEffect(() => {
-    void loadState();
+    void bootstrapSession();
   }, []);
 
   useEffect(() => {
@@ -137,13 +153,58 @@ export default function AppRoot() {
     setExpandedSelectedDayEmployees({});
   }, [selectedDate]);
 
-  async function loadState() {
+  async function bootstrapSession() {
     setLoading(true);
     setError('');
 
     try {
-      setState(await fetchState());
+      const storedToken = await getStoredSessionToken();
+
+      if (!storedToken) {
+        setSessionToken(null);
+        setState(emptyAppState);
+        setOnboarding(true);
+        return;
+      }
+
+      setState(await fetchState(storedToken));
+      setSessionToken(storedToken);
+      setOnboarding(false);
     } catch (caught) {
+      if (isUnauthorized(caught)) {
+        await clearSessionToken();
+        setSessionToken(null);
+        setState(emptyAppState);
+        setOnboarding(true);
+        return;
+      }
+
+      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadState() {
+    if (!sessionToken) {
+      setOnboarding(true);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      setState(await fetchState(sessionToken));
+    } catch (caught) {
+      if (isUnauthorized(caught)) {
+        await clearSessionToken();
+        setSessionToken(null);
+        setState(emptyAppState);
+        setOnboarding(true);
+        return;
+      }
+
       setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
     } finally {
       setLoading(false);
@@ -151,15 +212,76 @@ export default function AppRoot() {
   }
 
   async function mutate(action: ApiAction): Promise<boolean> {
+    if (!sessionToken) {
+      setOnboarding(true);
+      return false;
+    }
+
     setSaving(true);
     setError('');
 
     try {
-      setState(await sendAction(action));
+      setState(await sendAction(sessionToken, action));
       return true;
     } catch (caught) {
+      if (isUnauthorized(caught)) {
+        await clearSessionToken();
+        setSessionToken(null);
+        setState(emptyAppState);
+        setOnboarding(true);
+        return false;
+      }
+
       setError(caught instanceof Error ? caught.message : 'Не удалось сохранить в Neon.');
       return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function openWorkspace(token: string, nextState: AppState) {
+    try {
+      await saveSessionToken(token);
+      setSessionToken(token);
+      setState(nextState);
+      setOnboarding(false);
+      setInviteCode('');
+      setError('');
+    } catch {
+      setError(ONBOARDING_TEXT.saveFailed);
+    }
+  }
+
+  async function submitInviteCode() {
+    const code = inviteCode.trim();
+
+    if (!code) {
+      setError(ONBOARDING_TEXT.missingCode);
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+      const payload = await claimInvite(code);
+      await openWorkspace(payload.token, payload.state);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : ONBOARDING_TEXT.missingCode);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createEmptyWorkspace() {
+    setSaving(true);
+    setError('');
+
+    try {
+      const payload = await createWorkspace();
+      await openWorkspace(payload.token, payload.state);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'HTTP_ERROR');
     } finally {
       setSaving(false);
     }
@@ -387,6 +509,63 @@ export default function AppRoot() {
   }
 
   const selectedDateLabel = formatDate(selectedDate);
+
+  if (onboarding) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <ScrollView contentContainerStyle={styles.onboardingContent}>
+          <View style={styles.onboardingPanel}>
+            <View style={styles.onboardingHeader}>
+              <Text style={styles.onboardingTitle}>{ONBOARDING_TEXT.title}</Text>
+              <Text style={styles.onboardingSubtitle}>{ONBOARDING_TEXT.subtitle}</Text>
+            </View>
+
+            {error ? <Notice text={error} /> : null}
+
+            <View style={styles.onboardingField}>
+              <Text style={styles.fieldLabel}>{ONBOARDING_TEXT.codeLabel}</Text>
+              <TextInput
+                autoCapitalize="characters"
+                autoCorrect={false}
+                placeholder={ONBOARDING_TEXT.codePlaceholder}
+                placeholderTextColor="#9CA3AF"
+                style={styles.input}
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                testID="invite-code-input"
+              />
+            </View>
+
+            <Pressable
+              disabled={saving}
+              style={[styles.primaryButton, saving && styles.disabledButton]}
+              onPress={() => void submitInviteCode()}
+              testID="claim-invite-code"
+            >
+              <Text style={styles.primaryButtonText}>{ONBOARDING_TEXT.claim}</Text>
+            </Pressable>
+
+            <Pressable
+              disabled={saving}
+              style={[styles.secondaryButton, saving && styles.disabledButton]}
+              onPress={() => void createEmptyWorkspace()}
+              testID="create-workspace"
+            >
+              <Text style={styles.secondaryButtonText}>{ONBOARDING_TEXT.create}</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+
+        {saving ? (
+          <View style={styles.saving}>
+            <ActivityIndicator color={colors.accentText} />
+            <Text style={styles.savingText}>РЎРѕС…СЂР°РЅСЏСЋ</Text>
+          </View>
+        ) : null}
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -1043,6 +1222,10 @@ function PaymentHistory({
   );
 }
 
+function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 401;
+}
+
 function shiftMonth(month: string, offset: number): string {
   const [year, monthNumber] = month.split('-').map(Number);
   const next = new Date(year, monthNumber - 1 + offset, 1);
@@ -1193,6 +1376,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingBottom: 30,
     gap: 16,
+  },
+  onboardingContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 22,
+  },
+  onboardingPanel: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    gap: 14,
+  },
+  onboardingHeader: {
+    gap: 8,
+  },
+  onboardingTitle: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+  },
+  onboardingSubtitle: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  onboardingField: {
+    gap: 7,
   },
   calendarCard: {
     borderRadius: 18,
@@ -1689,6 +1903,24 @@ const styles = StyleSheet.create({
     color: colors.accentText,
     fontSize: 14,
     fontWeight: '900',
+  },
+  secondaryButton: {
+    minHeight: 50,
+    borderRadius: 25,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  disabledButton: {
+    opacity: 0.58,
   },
   chips: {
     flexDirection: 'row',

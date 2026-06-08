@@ -4,8 +4,8 @@
 
 - App name: `PVZ Android`
 - Package name: `ru.nickrimer.pvzandroid`
-- Version name: `1.0.0`
-- Version code: `1`
+- Version name: `1.0.1`
+- Version code: `2`
 - Release file options:
   - EAS preview APK: `eas build -p android --profile preview`
   - APK for device testing: `npm run build:rustore:apk`
