@@ -1,10 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import {
-  ConfigMissingError,
-  InvalidInviteCodeError,
   MissingDatabaseUrlError,
-  UnauthorizedError,
   addEmployee,
   addPayment,
   archiveEmployee,
@@ -15,16 +12,15 @@ import {
   toggleShift,
   updateLocationName,
   updatePayment,
-  requireWorkspaceSession,
 } from './_db';
 import type { ApiAction } from '../src/domain/types';
 
+const DEFAULT_WORKSPACE_ID = process.env.PVZ_DEFAULT_WORKSPACE_ID?.trim() || 'nick-main';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const workspaceId = await requireWorkspaceSession(readBearerToken(req));
-
     if (req.method === 'GET') {
-      res.status(200).json(await getState(workspaceId));
+      res.status(200).json(await getState(DEFAULT_WORKSPACE_ID));
       return;
     }
 
@@ -35,29 +31,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const body = readAction(req.body);
-    await applyAction(workspaceId, body);
-    res.status(200).json(await getState(workspaceId));
+    await applyAction(DEFAULT_WORKSPACE_ID, body);
+    res.status(200).json(await getState(DEFAULT_WORKSPACE_ID));
   } catch (error) {
     if (error instanceof MissingDatabaseUrlError) {
       res.status(503).json({
         error: 'DATABASE_URL_MISSING',
         message: 'Set DATABASE_URL to a Neon Postgres connection string.',
       });
-      return;
-    }
-
-    if (error instanceof UnauthorizedError) {
-      res.status(401).json({ error: 'UNAUTHORIZED' });
-      return;
-    }
-
-    if (error instanceof InvalidInviteCodeError) {
-      res.status(403).json({ error: 'INVALID_INVITE_CODE' });
-      return;
-    }
-
-    if (error instanceof ConfigMissingError) {
-      res.status(503).json({ error: 'CONFIG_MISSING' });
       return;
     }
 
@@ -76,17 +57,6 @@ function readAction(body: unknown): ApiAction {
   }
 
   return body as ApiAction;
-}
-
-function readBearerToken(req: VercelRequest): string | null {
-  const header = req.headers.authorization;
-  const value = Array.isArray(header) ? header[0] : header;
-
-  if (!value?.startsWith('Bearer ')) {
-    return null;
-  }
-
-  return value.slice('Bearer '.length).trim() || null;
 }
 
 async function applyAction(workspaceId: string, body: ApiAction) {
