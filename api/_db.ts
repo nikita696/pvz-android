@@ -5,6 +5,7 @@ import type { AppState, DayNote, Employee, PaymentKind, SalaryPayment, Shift } f
 const DEFAULT_LOCATION = { id: 'main', name: '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043f\u0443\u043d\u043a\u0442' };
 const DEFAULT_WORKSPACE_NAME = 'PVZ workspace';
 const EMPLOYEE_COLORS = ['#7c3aed', '#0e7490', '#b45309', '#047857', '#4f46e5', '#2563eb'];
+const INVITE_CODE_PREFIX = 'PVZ';
 
 type Sql = ReturnType<typeof getSql>;
 
@@ -54,8 +55,18 @@ export async function ensureSchema() {
     create table if not exists workspaces (
       id text primary key,
       name text not null,
+      invite_code text,
       created_at timestamptz not null default now()
     )
+  `;
+  await sql`
+    alter table workspaces
+    add column if not exists invite_code text
+  `;
+  await sql`
+    create unique index if not exists workspaces_invite_code_key
+    on workspaces (invite_code)
+    where invite_code is not null
   `;
   await sql`
     create table if not exists workspace_sessions (
@@ -69,6 +80,8 @@ export async function ensureSchema() {
     values (${defaultWorkspaceId}, ${DEFAULT_WORKSPACE_NAME})
     on conflict (id) do nothing
   `;
+  await ensureDefaultWorkspaceInviteCode(sql, defaultWorkspaceId);
+  await ensureWorkspaceInviteCodes(sql);
   await sql`
     create table if not exists locations (
       id text primary key,
@@ -186,9 +199,10 @@ export async function createWorkspace(): Promise<{ token: string; state: AppStat
   await ensureSchema();
 
   const workspaceId = `workspace-${crypto.randomUUID()}`;
+  const inviteCode = createInviteCode();
   await sql`
-    insert into workspaces (id, name)
-    values (${workspaceId}, ${DEFAULT_WORKSPACE_NAME})
+    insert into workspaces (id, name, invite_code)
+    values (${workspaceId}, ${DEFAULT_WORKSPACE_NAME}, ${inviteCode})
   `;
   await sql`
     insert into locations (id, workspace_id, name)
@@ -200,19 +214,19 @@ export async function createWorkspace(): Promise<{ token: string; state: AppStat
 }
 
 export async function claimInvite(code: string): Promise<{ token: string; state: AppState }> {
-  const inviteCode = process.env.PVZ_INVITE_CODE;
+  const sql = getSql();
+  await ensureSchema();
+  const normalizedCode = normalizeInviteCode(code);
+  const defaultInviteCode = getDefaultInviteCode();
+  const workspaceId =
+    defaultInviteCode && normalizedCode === defaultInviteCode
+      ? getDefaultWorkspaceId()
+      : await findWorkspaceIdByInviteCode(sql, normalizedCode);
 
-  if (!inviteCode?.trim()) {
-    throw new ConfigMissingError();
-  }
-
-  if (normalizeInviteCode(code) !== normalizeInviteCode(inviteCode)) {
+  if (!workspaceId) {
     throw new InvalidInviteCodeError();
   }
 
-  const sql = getSql();
-  await ensureSchema();
-  const workspaceId = getDefaultWorkspaceId();
   const token = await createSession(sql, workspaceId);
   return { token, state: await getState(workspaceId) };
 }
@@ -231,11 +245,70 @@ function normalizeInviteCode(code: string) {
   return code.trim().replace(/\s+/g, '').toUpperCase();
 }
 
+function getDefaultInviteCode(): string | null {
+  const code = process.env.PVZ_INVITE_CODE;
+  return code?.trim() ? normalizeInviteCode(code) : null;
+}
+
+function createInviteCode() {
+  return `${INVITE_CODE_PREFIX}-${crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+}
+
+async function ensureDefaultWorkspaceInviteCode(sql: Sql, defaultWorkspaceId: string) {
+  const defaultInviteCode = getDefaultInviteCode();
+
+  if (!defaultInviteCode) {
+    return;
+  }
+
+  await sql`
+    update workspaces
+    set invite_code = ${defaultInviteCode}
+    where id = ${defaultWorkspaceId}
+      and invite_code is distinct from ${defaultInviteCode}
+  `;
+}
+
+async function ensureWorkspaceInviteCodes(sql: Sql) {
+  const rows = await sql`
+    select id
+    from workspaces
+    where invite_code is null
+    order by created_at asc
+  `;
+
+  for (const row of rows) {
+    await sql`
+      update workspaces
+      set invite_code = ${createInviteCode()}
+      where id = ${String(row.id)}
+        and invite_code is null
+    `;
+  }
+}
+
+async function findWorkspaceIdByInviteCode(sql: Sql, inviteCode: string): Promise<string | null> {
+  const rows = await sql`
+    select id
+    from workspaces
+    where invite_code = ${inviteCode}
+    limit 1
+  `;
+
+  return rows[0]?.id ? String(rows[0].id) : null;
+}
+
 export async function getState(workspaceId: string): Promise<AppState> {
   const sql = getSql();
   await ensureSchema();
 
-  const [locationRows, employeeRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
+  const [workspaceRows, locationRows, employeeRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
+    sql`
+      select invite_code
+      from workspaces
+      where id = ${workspaceId}
+      limit 1
+    `,
     sql`
       select id, name
       from locations
@@ -277,6 +350,9 @@ export async function getState(workspaceId: string): Promise<AppState> {
   }
 
   return {
+    workspace: {
+      inviteCode: String(workspaceRows[0]?.invite_code ?? ''),
+    },
     location: {
       id: DEFAULT_LOCATION.id,
       name: String(locationRows[0]?.name ?? DEFAULT_LOCATION.name),

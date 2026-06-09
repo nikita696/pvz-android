@@ -35,7 +35,12 @@ export interface DayNote {
   updatedAt: string;
 }
 
+export interface WorkspaceInfo {
+  inviteCode: string;
+}
+
 export interface AppState {
+  workspace?: WorkspaceInfo;
   location: Location;
   employees: Employee[];
   shifts: Shift[];

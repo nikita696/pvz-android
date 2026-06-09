@@ -1,6 +1,6 @@
 import { CalendarDays } from 'lucide-react-native';
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { appFont, colors } from '../ui/theme';
 
@@ -23,7 +23,13 @@ export function Dialog({ visible, title, children, closeTestID, onClose }: Dialo
               <Text style={styles.cancelText}>Отмена</Text>
             </Pressable>
           </View>
-          {children}
+          <ScrollView
+            style={styles.dialogBody}
+            contentContainerStyle={styles.dialogBodyContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {children}
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -112,6 +118,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
+  },
+  dialogBody: {
+    flexShrink: 1,
+  },
+  dialogBodyContent: {
+    gap: 14,
   },
   dialogTitle: {
     fontFamily: appFont,

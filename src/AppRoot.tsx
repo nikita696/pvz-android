@@ -146,6 +146,7 @@ export default function AppRoot() {
     [paymentToDeleteId, state.payments],
   );
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
+  const workspaceInviteCode = state.workspace?.inviteCode ?? '';
 
   useEffect(() => {
     void bootstrapSession();
@@ -564,7 +565,7 @@ export default function AppRoot() {
         {saving ? (
           <View style={styles.saving}>
             <ActivityIndicator color={colors.accentText} />
-            <Text style={styles.savingText}>РЎРѕС…СЂР°РЅСЏСЋ</Text>
+            <Text style={styles.savingText}>Сохраняю</Text>
           </View>
         ) : null}
       </SafeAreaView>
@@ -594,15 +595,6 @@ export default function AppRoot() {
             <Text style={styles.subtitle}>Удобный трекер смен и выплат</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Сотрудники"
-              style={styles.iconButton}
-              onPress={() => setDialog('employees')}
-              testID="open-employees"
-            >
-              <UserPlus size={21} color={colors.accentText} />
-            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Обновить данные"
@@ -638,6 +630,27 @@ export default function AppRoot() {
                 state={state}
                 onSelect={openAssignment}
               />
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionHeaderText}>
+                  <Text style={styles.sectionTitle} testID="employees-section-title">Сотрудники</Text>
+                  <Text style={styles.muted}>
+                    {workspaceInviteCode
+                      ? `Код приглашения: ${workspaceInviteCode}`
+                      : 'Добавляйте сотрудников и отправляйте им код приглашения.'}
+                  </Text>
+                </View>
+                <Pressable
+                  style={styles.smallButton}
+                  onPress={() => setDialog('employees')}
+                  testID="open-employees"
+                >
+                  <UserPlus size={18} color={colors.accentText} />
+                  <Text style={styles.smallButtonText}>Добавить сотрудника</Text>
+                </Pressable>
+              </View>
             </View>
 
             <View style={styles.section}>
@@ -770,6 +783,18 @@ export default function AppRoot() {
         </Dialog>
 
         <Dialog visible={dialog === 'employees'} title="Сотрудники" onClose={() => setDialog(null)}>
+          <View style={styles.inviteCard}>
+            <Text style={styles.fieldLabel}>Код приглашения</Text>
+            <Text style={styles.inviteCardText}>
+              Скопируйте код и отправьте сотруднику, чтобы он подключился к этому ПВЗ.
+            </Text>
+            <View style={styles.inviteCodeBox}>
+              <Text selectable style={styles.inviteCodeText} testID="workspace-invite-code">
+                {workspaceInviteCode || 'Код пока не создан'}
+              </Text>
+            </View>
+          </View>
+
           <View style={styles.employeeManagerList}>
             {activeEmployees.length ? (
               activeEmployees.map((employee) => (
@@ -821,17 +846,22 @@ export default function AppRoot() {
               ))}
             </View>
           ) : null}
-          <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
-          <Field
-            label="Ставка в день, ₽"
-            value={dailyRate}
-            onChangeText={setDailyRate}
-            keyboardType="numeric"
-            testID="employee-rate"
-          />
-          <Pressable style={styles.primaryButton} onPress={addEmployee} testID="save-employee">
-            <Text style={styles.primaryButtonText}>Добавить</Text>
-          </Pressable>
+
+          <View style={styles.employeeAddSection}>
+            <Text style={styles.fieldLabel}>Добавить сотрудника</Text>
+            <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
+            <Field
+              label="Ставка в день, ₽"
+              value={dailyRate}
+              onChangeText={setDailyRate}
+              keyboardType="numeric"
+              testID="employee-rate"
+            />
+            <Pressable style={[styles.primaryButton, styles.buttonWithIcon]} onPress={addEmployee} testID="save-employee">
+              <UserPlus size={18} color={colors.accentText} />
+              <Text style={styles.primaryButtonText}>Добавить сотрудника</Text>
+            </Pressable>
+          </View>
         </Dialog>
 
         <Dialog
@@ -1579,11 +1609,47 @@ const styles = StyleSheet.create({
   employeeManagerList: {
     gap: 8,
   },
+  inviteCard: {
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  inviteCardText: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  inviteCodeBox: {
+    minHeight: 42,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+  },
+  inviteCodeText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '900',
+  },
   archiveSection: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: 12,
     gap: 8,
+  },
+  employeeAddSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+    gap: 10,
   },
   employeeManagerRow: {
     minHeight: 58,
@@ -1908,6 +1974,10 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonWithIcon: {
+    flexDirection: 'row',
+    gap: 8,
   },
   primaryButtonText: {
     fontFamily: appFont,

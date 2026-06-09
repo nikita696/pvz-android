@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import type { ApiAction, AppState } from '../src/domain/types';
 
@@ -14,6 +14,7 @@ const TEST_TOKEN = 'test-token';
 const EMPTY_TOKEN = 'empty-token';
 const INVITE_TOKEN = 'invite-token';
 const NICK = '\u041d\u0438\u043a';
+const EMPTY_WORKSPACE_INVITE = 'PVZ-EMPTY1234';
 const ONBOARDING_TITLE = '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u041f\u0412\u0417';
 const ONBOARDING_SUBTITLE =
   '\u0421\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u0433\u0440\u0430\u0444\u0438\u043a \u0438\u043b\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0435\u043c\u0443 \u041f\u0412\u0417 \u043f\u043e \u043a\u043e\u0434\u0443 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.';
@@ -23,6 +24,9 @@ const INVITE_CODE_HINT =
   '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0443 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430 \u041f\u0412\u0417.';
 const CONNECT_BUTTON = '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f';
 const CREATE_WORKSPACE_BUTTON = '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043d\u043e\u0432\u044b\u0439 \u041f\u0412\u0417';
+const ADD_EMPLOYEE_BUTTON = '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430';
+const EMPLOYEE_INVITE_HINT =
+  '\u0421\u043a\u043e\u043f\u0438\u0440\u0443\u0439\u0442\u0435 \u043a\u043e\u0434 \u0438 \u043e\u0442\u043f\u0440\u0430\u0432\u044c\u0442\u0435 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0443, \u0447\u0442\u043e\u0431\u044b \u043e\u043d \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u043b\u0441\u044f \u043a \u044d\u0442\u043e\u043c\u0443 \u041f\u0412\u0417.';
 const EMPTY_CODE_ERROR = '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.';
 const INVALID_CODE_ERROR =
   '\u041a\u043e\u0434 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0438\u043b\u0438 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442.';
@@ -36,80 +40,15 @@ const INTERNAL_ONBOARDING_COPY = [
   '\u043f\u0443\u0441\u0442\u043e\u0439 \u041f\u0412\u0417',
 ];
 
-test('pwa install metadata and service worker are available', async ({ page, request }) => {
-  await page.route('**/api/state', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        location: { id: 'main', name: LOCATION },
-        employees: [],
-        shifts: [],
-        payments: [],
-        dayNotes: [],
-      } satisfies AppState),
-    });
+async function disableServiceWorker(page: Page) {
+  await page.route('**/sw.js', async (route) => {
+    await route.abort();
   });
-
-  await page.goto('/');
-  await expect(page.getByTestId('create-workspace')).toBeVisible();
-
-  const manifestResponse = await request.get('/manifest.json');
-  expect(manifestResponse.ok()).toBe(true);
-  await expect(manifestResponse.json()).resolves.toEqual({
-    name: 'PVZ Android',
-    short_name: 'PVZ',
-    start_url: '/',
-    display: 'standalone',
-    background_color: '#f7f8f5',
-    theme_color: '#a8d5ba',
-    icons: [
-      {
-        src: '/pwa-icon-192.png',
-        sizes: '192x192',
-        type: 'image/png',
-        purpose: 'any maskable',
-      },
-      {
-        src: '/pwa-icon-512.png',
-        sizes: '512x512',
-        type: 'image/png',
-        purpose: 'any maskable',
-      },
-    ],
-  });
-
-  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.json');
-  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#a8d5ba');
-  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
-  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/pwa-icon-192.png');
-
-  const serviceWorkerResponse = await request.get('/sw.js');
-  expect(serviceWorkerResponse.ok()).toBe(true);
-  const serviceWorker = await serviceWorkerResponse.text();
-  expect(serviceWorker).toContain("const CACHE_NAME = 'pvz-android-shell-v2'");
-  expect(serviceWorker).toContain("request.mode === 'navigate'");
-
-  const registration = await page.evaluate(async () => {
-    const serviceWorker = navigator.serviceWorker;
-    if (!serviceWorker) {
-      return null;
-    }
-
-    const readyRegistration = await serviceWorker.ready;
-    const worker = readyRegistration.active ?? readyRegistration.waiting ?? readyRegistration.installing;
-
-    return {
-      scope: readyRegistration.scope,
-      scriptURL: worker?.scriptURL,
-    };
-  });
-
-  expect(registration?.scope).toBe('http://127.0.0.1:8097/');
-  expect(registration?.scriptURL).toBe('http://127.0.0.1:8097/sw.js');
-});
+}
 
 test('fresh install starts with onboarding and no real workspace data', async ({ page }) => {
+  await disableServiceWorker(page);
+
   let stateRequested = false;
 
   await page.route('**/api/state', async (route) => {
@@ -135,6 +74,8 @@ test('fresh install starts with onboarding and no real workspace data', async ({
 });
 
 test('invite onboarding shows neutral validation errors', async ({ page }) => {
+  await disableServiceWorker(page);
+
   let inviteRequested = false;
 
   await page.route('**/api/invites/claim', async (route) => {
@@ -153,19 +94,26 @@ test('invite onboarding shows neutral validation errors', async ({ page }) => {
 });
 
 test('invite onboarding shows a neutral network error', async ({ page }) => {
+  await disableServiceWorker(page);
+
   await page.route('**/api/invites/claim', async (route) => {
     await route.abort('failed');
   });
 
   await page.goto('/');
-  await page.getByTestId('invite-code-input').fill('PVZ-CODE');
+  const input = page.getByTestId('invite-code-input');
+  await input.fill('PVZ-CODE');
+  await expect(input).toHaveValue('PVZ-CODE');
   await page.getByTestId('claim-invite-code').click();
 
   await expect(page.getByText(NETWORK_ERROR)).toBeVisible();
 });
 
 test('creating an empty workspace opens an isolated blank schedule', async ({ page }) => {
+  await disableServiceWorker(page);
+
   let serverState: AppState = {
+    workspace: { inviteCode: EMPTY_WORKSPACE_INVITE },
     location: { id: 'main', name: LOCATION },
     employees: [],
     shifts: [],
@@ -208,9 +156,15 @@ test('creating an empty workspace opens an isolated blank schedule', async ({ pa
   await expect(page.getByTestId('create-workspace')).toBeVisible();
   await page.getByTestId('create-workspace').click();
   await expect(page.getByText(LOCATION)).toBeVisible();
+  await expect(page.getByTestId('employees-section-title')).toBeVisible();
+  await expect(page.getByText(`\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f: ${EMPTY_WORKSPACE_INVITE}`)).toBeVisible();
+  await expect(page.getByText(ADD_EMPLOYEE_BUTTON, { exact: true })).toBeVisible();
   await expect(page.getByText(NICK, { exact: true })).toHaveCount(0);
 
   await page.getByTestId('open-employees').click();
+  await expect(page.getByText(EMPLOYEE_INVITE_HINT)).toBeVisible();
+  await expect(page.getByTestId('workspace-invite-code')).toHaveText(EMPTY_WORKSPACE_INVITE);
+  await expect(page.getByTestId('save-employee')).toContainText(ADD_EMPLOYEE_BUTTON);
   await page.getByTestId('employee-name').fill(IRA);
   await page.getByTestId('employee-rate').fill('3000');
   await page.getByTestId('save-employee').click();
@@ -219,7 +173,10 @@ test('creating an empty workspace opens an isolated blank schedule', async ({ pa
 });
 
 test('invite code connects to the private PVZ workspace', async ({ page }) => {
+  await disableServiceWorker(page);
+
   const nickState: AppState = {
+    workspace: { inviteCode: 'PVZ-CODE' },
     location: { id: 'main', name: LOCATION },
     employees: [
       {
@@ -265,6 +222,8 @@ test('invite code connects to the private PVZ workspace', async ({ page }) => {
 });
 
 test('minimal schedule and salary flow renders', async ({ page }) => {
+  await disableServiceWorker(page);
+
   await page.addInitScript((visibleDate) => {
     const fixedNow = `${visibleDate}T12:00:00.000Z`;
     const RealDate = Date;
@@ -520,4 +479,77 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
   await expect(page.getByText(IRA)).toHaveCount(0);
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
+});
+
+test('pwa install metadata and service worker are available', async ({ page, request }) => {
+  await page.route('**/api/state', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        location: { id: 'main', name: LOCATION },
+        employees: [],
+        shifts: [],
+        payments: [],
+        dayNotes: [],
+      } satisfies AppState),
+    });
+  });
+
+  await page.goto('/');
+  await expect(page.getByTestId('create-workspace')).toBeVisible();
+
+  const manifestResponse = await request.get('/manifest.json');
+  expect(manifestResponse.ok()).toBe(true);
+  await expect(manifestResponse.json()).resolves.toEqual({
+    name: 'PVZ Android',
+    short_name: 'PVZ',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#f7f8f5',
+    theme_color: '#a8d5ba',
+    icons: [
+      {
+        src: '/pwa-icon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+      {
+        src: '/pwa-icon-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+    ],
+  });
+
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.json');
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#a8d5ba');
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/pwa-icon-192.png');
+
+  const serviceWorkerResponse = await request.get('/sw.js');
+  expect(serviceWorkerResponse.ok()).toBe(true);
+  const serviceWorker = await serviceWorkerResponse.text();
+  expect(serviceWorker).toContain("const CACHE_NAME = 'pvz-android-shell-v2'");
+  expect(serviceWorker).toContain("request.mode === 'navigate'");
+
+  const registration = await page.evaluate(async () => {
+    const serviceWorker = navigator.serviceWorker;
+    if (!serviceWorker) {
+      return null;
+    }
+
+    const readyRegistration = await serviceWorker.ready;
+    const worker = readyRegistration.active ?? readyRegistration.waiting ?? readyRegistration.installing;
+
+    return {
+      scope: readyRegistration.scope,
+      scriptURL: worker?.scriptURL,
+    };
+  });
+
+  expect(registration?.scope).toBe('http://127.0.0.1:8097/');
+  expect(registration?.scriptURL).toBe('http://127.0.0.1:8097/sw.js');
 });
