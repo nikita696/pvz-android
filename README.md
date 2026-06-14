@@ -51,3 +51,7 @@ For web preview:
 ```bash
 npm run web
 ```
+
+## Recovery note
+
+Production is intentionally restored from `main` without owner-login or invite blocking.
