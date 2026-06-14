@@ -43,6 +43,7 @@ type FieldProps = {
   keyboardType?: 'default' | 'numeric';
   placeholder?: string;
   maxLength?: number;
+  secureTextEntry?: boolean;
   testID?: string;
 };
 
@@ -53,6 +54,7 @@ export function Field({
   keyboardType,
   placeholder,
   maxLength,
+  secureTextEntry,
   testID,
 }: FieldProps) {
   return (
@@ -65,6 +67,7 @@ export function Field({
         keyboardType={keyboardType}
         placeholder={placeholder}
         maxLength={maxLength}
+        secureTextEntry={secureTextEntry}
         placeholderTextColor="#9CA3AF"
         testID={testID}
       />

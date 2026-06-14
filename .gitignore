@@ -28,6 +28,8 @@ yarn-error.*
 test-results/
 playwright-report/
 .codex-remote-attachments/
+data-backups/
+exports/
 
 # macOS
 .DS_Store

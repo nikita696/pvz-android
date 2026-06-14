@@ -1,12 +1,12 @@
 {
   "name": "pvz-android",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~56.0.13",
     "@neondatabase/serverless": "^1.1.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~56.0.8",
-    "expo-secure-store": "~56.0.4",
     "expo-status-bar": "~56.0.4",
     "lucide-react-native": "^1.17.0",
     "react": "19.2.3",
@@ -20,7 +20,7 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.60.0",
     "@types/react": "~19.2.2",
-    "@vercel/node": "^5.8.8",
+    "@vercel/node": "^5.8.17",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
     "typescript": "~6.0.3",

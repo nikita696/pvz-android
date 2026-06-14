@@ -2,7 +2,7 @@
   "expo": {
     "name": "PVZ Android",
     "slug": "pvz-android",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -11,15 +11,14 @@
     },
     "android": {
       "package": "ru.nickrimer.pvzandroid",
-      "versionCode": 2,
-      "permissions": [
-        "android.permission.INTERNET"
-      ],
+      "versionCode": 3,
+      "permissions": [],
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.INTERNET"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#F7F8F5",
@@ -30,9 +29,6 @@
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
-    },
-    "plugins": [
-      "expo-secure-store"
-    ]
+    }
   }
 }

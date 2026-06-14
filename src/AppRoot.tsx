@@ -21,7 +21,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiRequestError, claimInvite, createWorkspace, fetchState, sendAction } from './api';
 import { CalendarGrid } from './components/CalendarGrid';
 import { MonthStepper } from './components/MonthStepper';
 import { SelectedDayPanel } from './components/SelectedDayPanel';
@@ -36,7 +35,13 @@ import {
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
 import type { ApiAction, AppState, Employee, PaymentKind, SalaryPayment } from './domain/types';
-import { clearSessionToken, getStoredSessionToken, saveSessionToken } from './sessionToken';
+import {
+  OwnerAccessRequiredError,
+  applyAppAction,
+  loadAppState,
+  ownerSyncEnabled,
+  submitOwnerPassword,
+} from './appStore';
 import { appFont, colors } from './ui/theme';
 
 const MONTH_NAMES = [
@@ -53,22 +58,6 @@ const MONTH_NAMES = [
   'ноябрь',
   'декабрь',
 ];
-const ONBOARDING_TEXT = {
-  title: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u041f\u0412\u0417',
-  subtitle:
-    '\u0421\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u0433\u0440\u0430\u0444\u0438\u043a \u0438\u043b\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0435\u043c\u0443 \u041f\u0412\u0417 \u043f\u043e \u043a\u043e\u0434\u0443 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.',
-  codeLabel: '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f',
-  codePlaceholder: '\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440, PVZ-1234',
-  codeHint:
-    '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0443 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430 \u041f\u0412\u0417.',
-  claim: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f',
-  create: '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043d\u043e\u0432\u044b\u0439 \u041f\u0412\u0417',
-  missingCode: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.',
-  connected: '\u041f\u0412\u0417 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0451\u043d.',
-  loading: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0430\u0435\u043c \u041f\u0412\u0417',
-  saveFailed: '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0442\u043e\u043a\u0435\u043d \u041f\u0412\u0417.',
-};
-
 type DialogName =
   | 'assign'
   | 'deleteEmployee'
@@ -105,11 +94,10 @@ export default function AppRoot() {
   const [paymentComment, setPaymentComment] = useState('');
   const [paymentDateText, setPaymentDateText] = useState(formatDate(TODAY));
   const [dayNoteText, setDayNoteText] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [onboarding, setOnboarding] = useState(false);
   const [selectedDayEmployeesOpen, setSelectedDayEmployeesOpen] = useState(false);
   const [expandedSelectedDayEmployees, setExpandedSelectedDayEmployees] = useState<Record<string, boolean>>({});
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [ownerAccessRequired, setOwnerAccessRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -146,7 +134,6 @@ export default function AppRoot() {
     [paymentToDeleteId, state.payments],
   );
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
-  const workspaceInviteCode = state.workspace?.inviteCode ?? '';
 
   useEffect(() => {
     void bootstrapSession();
@@ -162,105 +149,63 @@ export default function AppRoot() {
     setError('');
 
     try {
-      const storedToken = await getStoredSessionToken();
-
-      if (!storedToken) {
-        setSessionToken(null);
-        setState(emptyAppState);
-        setOnboarding(true);
-        return;
-      }
-
-      setState(await fetchState(storedToken));
-      setSessionToken(storedToken);
-      setOnboarding(false);
+      setState(await loadAppState());
+      setOwnerAccessRequired(false);
     } catch (caught) {
-      if (isUnauthorized(caught)) {
-        await clearSessionToken();
-        setSessionToken(null);
-        setState(emptyAppState);
-        setOnboarding(true);
+      if (caught instanceof OwnerAccessRequiredError) {
+        setOwnerAccessRequired(true);
         return;
       }
 
-      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
+      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить локальные данные.');
     } finally {
       setLoading(false);
     }
   }
 
   async function loadState() {
-    if (!sessionToken) {
-      setOnboarding(true);
-      return;
-    }
-
     setLoading(true);
     setError('');
 
     try {
-      setState(await fetchState(sessionToken));
+      setState(await loadAppState());
+      setOwnerAccessRequired(false);
     } catch (caught) {
-      if (isUnauthorized(caught)) {
-        await clearSessionToken();
-        setSessionToken(null);
-        setState(emptyAppState);
-        setOnboarding(true);
+      if (caught instanceof OwnerAccessRequiredError) {
+        setOwnerAccessRequired(true);
         return;
       }
 
-      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
+      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить локальные данные.');
     } finally {
       setLoading(false);
     }
   }
 
   async function mutate(action: ApiAction): Promise<boolean> {
-    if (!sessionToken) {
-      setOnboarding(true);
-      return false;
-    }
-
     setSaving(true);
     setError('');
 
     try {
-      setState(await sendAction(sessionToken, action));
+      const nextState = await applyAppAction(state, action);
+      setState(nextState);
       return true;
     } catch (caught) {
-      if (isUnauthorized(caught)) {
-        await clearSessionToken();
-        setSessionToken(null);
-        setState(emptyAppState);
-        setOnboarding(true);
+      if (caught instanceof OwnerAccessRequiredError) {
+        setOwnerAccessRequired(true);
         return false;
       }
 
-      setError(caught instanceof Error ? caught.message : 'Не удалось сохранить в Neon.');
+      setError(caught instanceof Error ? caught.message : 'Не удалось сохранить локальные данные.');
       return false;
     } finally {
       setSaving(false);
     }
   }
 
-  async function openWorkspace(token: string, nextState: AppState) {
-    try {
-      await saveSessionToken(token);
-      setSessionToken(token);
-      setState(nextState);
-      setOnboarding(false);
-      setInviteCode('');
-      setError('');
-    } catch {
-      setError(ONBOARDING_TEXT.saveFailed);
-    }
-  }
-
-  async function submitInviteCode() {
-    const code = inviteCode.trim();
-
-    if (!code) {
-      setError(ONBOARDING_TEXT.missingCode);
+  async function signInOwner() {
+    if (!ownerPassword.trim()) {
+      setError('Введите пароль владельца.');
       return;
     }
 
@@ -268,26 +213,14 @@ export default function AppRoot() {
     setError('');
 
     try {
-      const payload = await claimInvite(code);
-      await openWorkspace(payload.token, payload.state);
+      setState(await submitOwnerPassword(ownerPassword));
+      setOwnerPassword('');
+      setOwnerAccessRequired(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : ONBOARDING_TEXT.missingCode);
+      setError(caught instanceof Error ? caught.message : 'Не удалось войти как владелец.');
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function createEmptyWorkspace() {
-    setSaving(true);
-    setError('');
-
-    try {
-      const payload = await createWorkspace();
-      await openWorkspace(payload.token, payload.state);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'HTTP_ERROR');
-    } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
@@ -514,60 +447,38 @@ export default function AppRoot() {
 
   const selectedDateLabel = formatDate(selectedDate);
 
-  if (onboarding) {
+  if (ownerSyncEnabled && ownerAccessRequired) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar style="dark" />
-        <ScrollView contentContainerStyle={styles.onboardingContent}>
-          <View style={styles.onboardingPanel}>
-            <View style={styles.onboardingHeader}>
-              <Text style={styles.onboardingTitle}>{ONBOARDING_TEXT.title}</Text>
-              <Text style={styles.onboardingSubtitle}>{ONBOARDING_TEXT.subtitle}</Text>
+        <ScrollView contentContainerStyle={styles.ownerAccessContent}>
+          <View style={styles.ownerAccessPanel}>
+            <View style={styles.ownerAccessHeader}>
+              <Text style={styles.ownerAccessTitle}>Вход владельца</Text>
+              <Text style={styles.ownerAccessSubtitle}>
+                Для этого устройства включена синхронизация с общей базой ПВЗ.
+              </Text>
             </View>
 
             {error ? <Notice text={error} /> : null}
 
-            <View style={styles.onboardingField}>
-              <Text style={styles.fieldLabel}>{ONBOARDING_TEXT.codeLabel}</Text>
-              <TextInput
-                autoCapitalize="characters"
-                autoCorrect={false}
-                placeholder={ONBOARDING_TEXT.codePlaceholder}
-                placeholderTextColor="#9CA3AF"
-                style={styles.input}
-                value={inviteCode}
-                onChangeText={setInviteCode}
-                testID="invite-code-input"
-              />
-              <Text style={styles.onboardingHint}>{ONBOARDING_TEXT.codeHint}</Text>
-            </View>
-
+            <Field
+              label="Пароль"
+              value={ownerPassword}
+              onChangeText={setOwnerPassword}
+              secureTextEntry
+              testID="owner-password"
+            />
             <Pressable
               disabled={saving}
               style={[styles.primaryButton, saving && styles.disabledButton]}
-              onPress={() => void submitInviteCode()}
-              testID="claim-invite-code"
+              onPress={() => void signInOwner()}
+              testID="owner-sign-in"
             >
-              <Text style={styles.primaryButtonText}>{ONBOARDING_TEXT.claim}</Text>
-            </Pressable>
-
-            <Pressable
-              disabled={saving}
-              style={[styles.secondaryButton, saving && styles.disabledButton]}
-              onPress={() => void createEmptyWorkspace()}
-              testID="create-workspace"
-            >
-              <Text style={styles.secondaryButtonText}>{ONBOARDING_TEXT.create}</Text>
+              <Text style={styles.primaryButtonText}>Открыть ПВЗ</Text>
             </Pressable>
           </View>
         </ScrollView>
-
-        {saving ? (
-          <View style={styles.saving}>
-            <ActivityIndicator color={colors.accentText} />
-            <Text style={styles.savingText}>Сохраняю</Text>
-          </View>
-        ) : null}
       </SafeAreaView>
     );
   }
@@ -610,7 +521,7 @@ export default function AppRoot() {
         {loading ? (
           <View style={styles.centerState}>
             <ActivityIndicator color={colors.accent} />
-            <Text style={styles.muted}>Загружаю данные из Neon</Text>
+            <Text style={styles.muted}>Загружаю локальные данные</Text>
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.content}>
@@ -636,11 +547,7 @@ export default function AppRoot() {
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionHeaderText}>
                   <Text style={styles.sectionTitle} testID="employees-section-title">Сотрудники</Text>
-                  <Text style={styles.muted}>
-                    {workspaceInviteCode
-                      ? `Код приглашения: ${workspaceInviteCode}`
-                      : 'Добавляйте сотрудников и отправляйте им код приглашения.'}
-                  </Text>
+                  <Text style={styles.muted}>Добавляйте сотрудников вручную.</Text>
                 </View>
                 <Pressable
                   style={styles.smallButton}
@@ -783,18 +690,6 @@ export default function AppRoot() {
         </Dialog>
 
         <Dialog visible={dialog === 'employees'} title="Сотрудники" onClose={() => setDialog(null)}>
-          <View style={styles.inviteCard}>
-            <Text style={styles.fieldLabel}>Код приглашения</Text>
-            <Text style={styles.inviteCardText}>
-              Скопируйте код и отправьте сотруднику, чтобы он подключился к этому ПВЗ.
-            </Text>
-            <View style={styles.inviteCodeBox}>
-              <Text selectable style={styles.inviteCodeText} testID="workspace-invite-code">
-                {workspaceInviteCode || 'Код пока не создан'}
-              </Text>
-            </View>
-          </View>
-
           <View style={styles.employeeManagerList}>
             {activeEmployees.length ? (
               activeEmployees.map((employee) => (
@@ -1256,10 +1151,6 @@ function PaymentHistory({
   );
 }
 
-function isUnauthorized(error: unknown): boolean {
-  return error instanceof ApiRequestError && error.status === 401;
-}
-
 function shiftMonth(month: string, offset: number): string {
   const [year, monthNumber] = month.split('-').map(Number);
   const next = new Date(year, monthNumber - 1 + offset, 1);
@@ -1411,43 +1302,33 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
     gap: 16,
   },
-  onboardingContent: {
+  ownerAccessContent: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: 22,
   },
-  onboardingPanel: {
+  ownerAccessPanel: {
     width: '100%',
     maxWidth: 420,
     alignSelf: 'center',
     gap: 14,
   },
-  onboardingHeader: {
+  ownerAccessHeader: {
     gap: 8,
   },
-  onboardingTitle: {
+  ownerAccessTitle: {
     fontFamily: appFont,
     color: colors.text,
     fontSize: 28,
     lineHeight: 34,
     fontWeight: '900',
   },
-  onboardingSubtitle: {
+  ownerAccessSubtitle: {
     fontFamily: appFont,
     color: colors.muted,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '700',
-  },
-  onboardingField: {
-    gap: 7,
-  },
-  onboardingHint: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '600',
   },
   calendarCard: {
     borderRadius: 18,
@@ -1608,36 +1489,6 @@ const styles = StyleSheet.create({
   },
   employeeManagerList: {
     gap: 8,
-  },
-  inviteCard: {
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 8,
-  },
-  inviteCardText: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  inviteCodeBox: {
-    minHeight: 42,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-  },
-  inviteCodeText: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 16,
-    lineHeight: 21,
-    fontWeight: '900',
   },
   archiveSection: {
     borderTopWidth: 1,

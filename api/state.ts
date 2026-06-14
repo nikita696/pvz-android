@@ -1,8 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import {
-  ConfigMissingError,
-  InvalidInviteCodeError,
   MissingDatabaseUrlError,
   UnauthorizedError,
   addEmployee,
@@ -11,20 +9,22 @@ import {
   deletePayment,
   deleteArchivedEmployee,
   getState,
+  requireOwnerSession,
   saveDayNote,
   toggleShift,
   updateLocationName,
   updatePayment,
-  requireWorkspaceSession,
 } from './_db';
 import type { ApiAction } from '../src/domain/types';
 
+const DEFAULT_WORKSPACE_ID = process.env.PVZ_DEFAULT_WORKSPACE_ID?.trim() || 'nick-main';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const workspaceId = await requireWorkspaceSession(readBearerToken(req));
+    await requireOwnerSession(readBearerToken(req));
 
     if (req.method === 'GET') {
-      res.status(200).json(await getState(workspaceId));
+      res.status(200).json(await getState(DEFAULT_WORKSPACE_ID));
       return;
     }
 
@@ -35,8 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const body = readAction(req.body);
-    await applyAction(workspaceId, body);
-    res.status(200).json(await getState(workspaceId));
+    await applyAction(DEFAULT_WORKSPACE_ID, body);
+    res.status(200).json(await getState(DEFAULT_WORKSPACE_ID));
   } catch (error) {
     if (error instanceof MissingDatabaseUrlError) {
       res.status(503).json({
@@ -48,16 +48,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (error instanceof UnauthorizedError) {
       res.status(401).json({ error: 'UNAUTHORIZED' });
-      return;
-    }
-
-    if (error instanceof InvalidInviteCodeError) {
-      res.status(403).json({ error: 'INVALID_INVITE_CODE' });
-      return;
-    }
-
-    if (error instanceof ConfigMissingError) {
-      res.status(503).json({ error: 'CONFIG_MISSING' });
       return;
     }
 

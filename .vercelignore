@@ -1,0 +1,6 @@
+.env*
+data-backups/
+exports/
+node_modules/
+playwright-report/
+test-results/

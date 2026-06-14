@@ -4,8 +4,8 @@
 
 - App name: `PVZ Android`
 - Package name: `ru.nickrimer.pvzandroid`
-- Version name: `1.0.1`
-- Version code: `2`
+- Version name: `1.0.2`
+- Version code: `3`
 - Release file options:
   - EAS preview APK: `eas build -p android --profile preview`
   - APK for device testing: `npm run build:rustore:apk`
@@ -49,6 +49,9 @@ If the CLI is not logged in, run `eas login` or set `EXPO_TOKEN`.
 ## Before upload
 
 - Build and install the APK on a real Android device.
+- Confirm a fresh install starts with an empty local schedule and does not call any `/api/*` endpoint.
+- Confirm `EXPO_PUBLIC_PVZ_SYNC_MODE` is not set to `owner` for the public RuStore build.
+- Confirm the public Android config does not request `android.permission.INTERNET`.
 - Keep the signing key safe. Future APK updates must use the same signature.
 - For every new RuStore release, increase `expo.android.versionCode` in `app.json`.
 - If uploading AAB, upload the app signing files in RuStore Console before the AAB.

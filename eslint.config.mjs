@@ -6,7 +6,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['data-backups/**', 'dist/**', 'exports/**', 'node_modules/**', 'playwright-report/**', 'test-results/**'],
   },
   {
     files: ['**/*.{ts,tsx}'],
@@ -21,7 +21,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['app.config.js', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: globals.node,
     },

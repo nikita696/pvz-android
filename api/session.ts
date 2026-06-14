@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { ConfigMissingError, InvalidInviteCodeError, MissingDatabaseUrlError, createWorkspace } from './_db';
+import {
+  ConfigMissingError,
+  InvalidOwnerPasswordError,
+  MissingDatabaseUrlError,
+  createOwnerSession,
+} from './_db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -10,7 +15,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    res.status(200).json(await createWorkspace());
+    const body = readBody(req.body);
+    const password = typeof body.password === 'string' ? body.password : '';
+
+    if (!password.trim()) {
+      res.status(400).json({ error: 'BAD_REQUEST' });
+      return;
+    }
+
+    res.status(200).json(await createOwnerSession(password));
   } catch (error) {
     if (error instanceof MissingDatabaseUrlError) {
       res.status(503).json({
@@ -20,8 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    if (error instanceof InvalidInviteCodeError) {
-      res.status(403).json({ error: 'INVALID_INVITE_CODE' });
+    if (error instanceof InvalidOwnerPasswordError) {
+      res.status(403).json({ error: 'INVALID_OWNER_PASSWORD' });
       return;
     }
 
@@ -32,4 +45,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
+}
+
+function readBody(body: unknown): { password?: unknown } {
+  if (typeof body === 'string') {
+    return JSON.parse(body) as { password?: unknown };
+  }
+
+  return body && typeof body === 'object' ? (body as { password?: unknown }) : {};
 }

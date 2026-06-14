@@ -5,7 +5,6 @@ import type { AppState, DayNote, Employee, PaymentKind, SalaryPayment, Shift } f
 const DEFAULT_LOCATION = { id: 'main', name: '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043f\u0443\u043d\u043a\u0442' };
 const DEFAULT_WORKSPACE_NAME = 'PVZ workspace';
 const EMPLOYEE_COLORS = ['#7c3aed', '#0e7490', '#b45309', '#047857', '#4f46e5', '#2563eb'];
-const INVITE_CODE_PREFIX = 'PVZ';
 
 type Sql = ReturnType<typeof getSql>;
 
@@ -21,9 +20,9 @@ export class UnauthorizedError extends Error {
   }
 }
 
-export class InvalidInviteCodeError extends Error {
+export class InvalidOwnerPasswordError extends Error {
   constructor() {
-    super('INVALID_INVITE_CODE');
+    super('INVALID_OWNER_PASSWORD');
   }
 }
 
@@ -55,23 +54,6 @@ export async function ensureSchema() {
     create table if not exists workspaces (
       id text primary key,
       name text not null,
-      invite_code text,
-      created_at timestamptz not null default now()
-    )
-  `;
-  await sql`
-    alter table workspaces
-    add column if not exists invite_code text
-  `;
-  await sql`
-    create unique index if not exists workspaces_invite_code_key
-    on workspaces (invite_code)
-    where invite_code is not null
-  `;
-  await sql`
-    create table if not exists workspace_sessions (
-      token text primary key,
-      workspace_id text not null references workspaces(id) on delete cascade,
       created_at timestamptz not null default now()
     )
   `;
@@ -80,8 +62,12 @@ export async function ensureSchema() {
     values (${defaultWorkspaceId}, ${DEFAULT_WORKSPACE_NAME})
     on conflict (id) do nothing
   `;
-  await ensureDefaultWorkspaceInviteCode(sql, defaultWorkspaceId);
-  await ensureWorkspaceInviteCodes(sql);
+  await sql`
+    create table if not exists owner_sessions (
+      token text primary key,
+      created_at timestamptz not null default now()
+    )
+  `;
   await sql`
     create table if not exists locations (
       id text primary key,
@@ -172,7 +158,29 @@ async function ensureDayNotesPrimaryKey(sql: Sql) {
   `;
 }
 
-export async function requireWorkspaceSession(token: string | null): Promise<string> {
+export async function createOwnerSession(password: string): Promise<{ token: string; state: AppState }> {
+  const ownerPassword = getOwnerPassword();
+
+  if (!ownerPassword) {
+    throw new ConfigMissingError();
+  }
+
+  if (normalizeSecret(password) !== normalizeSecret(ownerPassword)) {
+    throw new InvalidOwnerPasswordError();
+  }
+
+  const sql = getSql();
+  await ensureSchema();
+  const token = crypto.randomUUID();
+  await sql`
+    insert into owner_sessions (token)
+    values (${token})
+  `;
+
+  return { token, state: await getState(getDefaultWorkspaceId()) };
+}
+
+export async function requireOwnerSession(token: string | null): Promise<void> {
   if (!token) {
     throw new UnauthorizedError();
   }
@@ -180,135 +188,31 @@ export async function requireWorkspaceSession(token: string | null): Promise<str
   const sql = getSql();
   await ensureSchema();
   const rows = await sql`
-    select workspace_id
-    from workspace_sessions
+    select token
+    from owner_sessions
     where token = ${token}
     limit 1
   `;
-  const workspaceId = rows[0]?.workspace_id;
 
-  if (!workspaceId) {
+  if (!rows.length) {
     throw new UnauthorizedError();
   }
-
-  return String(workspaceId);
 }
 
-export async function createWorkspace(): Promise<{ token: string; state: AppState }> {
-  const sql = getSql();
-  await ensureSchema();
-
-  const workspaceId = `workspace-${crypto.randomUUID()}`;
-  const inviteCode = createInviteCode();
-  await sql`
-    insert into workspaces (id, name, invite_code)
-    values (${workspaceId}, ${DEFAULT_WORKSPACE_NAME}, ${inviteCode})
-  `;
-  await sql`
-    insert into locations (id, workspace_id, name)
-    values (${locationRowId(workspaceId)}, ${workspaceId}, ${DEFAULT_LOCATION.name})
-  `;
-
-  const token = await createSession(sql, workspaceId);
-  return { token, state: await getState(workspaceId) };
+function getOwnerPassword(): string | null {
+  const password = process.env.PVZ_OWNER_PASSWORD ?? process.env.PVZ_INVITE_CODE;
+  return password?.trim() || null;
 }
 
-export async function claimInvite(code: string): Promise<{ token: string; state: AppState }> {
-  const sql = getSql();
-  await ensureSchema();
-  const normalizedCode = normalizeInviteCode(code);
-  const defaultInviteCode = getDefaultInviteCode();
-  const workspaceId =
-    defaultInviteCode && normalizedCode === defaultInviteCode
-      ? getDefaultWorkspaceId()
-      : await findWorkspaceIdByInviteCode(sql, normalizedCode);
-
-  if (!workspaceId) {
-    throw new InvalidInviteCodeError();
-  }
-
-  const token = await createSession(sql, workspaceId);
-  return { token, state: await getState(workspaceId) };
-}
-
-async function createSession(sql: Sql, workspaceId: string) {
-  const token = crypto.randomUUID();
-  await sql`
-    insert into workspace_sessions (token, workspace_id)
-    values (${token}, ${workspaceId})
-  `;
-
-  return token;
-}
-
-function normalizeInviteCode(code: string) {
-  return code.trim().replace(/\s+/g, '').toUpperCase();
-}
-
-function getDefaultInviteCode(): string | null {
-  const code = process.env.PVZ_INVITE_CODE;
-  return code?.trim() ? normalizeInviteCode(code) : null;
-}
-
-function createInviteCode() {
-  return `${INVITE_CODE_PREFIX}-${crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
-}
-
-async function ensureDefaultWorkspaceInviteCode(sql: Sql, defaultWorkspaceId: string) {
-  const defaultInviteCode = getDefaultInviteCode();
-
-  if (!defaultInviteCode) {
-    return;
-  }
-
-  await sql`
-    update workspaces
-    set invite_code = ${defaultInviteCode}
-    where id = ${defaultWorkspaceId}
-      and invite_code is distinct from ${defaultInviteCode}
-  `;
-}
-
-async function ensureWorkspaceInviteCodes(sql: Sql) {
-  const rows = await sql`
-    select id
-    from workspaces
-    where invite_code is null
-    order by created_at asc
-  `;
-
-  for (const row of rows) {
-    await sql`
-      update workspaces
-      set invite_code = ${createInviteCode()}
-      where id = ${String(row.id)}
-        and invite_code is null
-    `;
-  }
-}
-
-async function findWorkspaceIdByInviteCode(sql: Sql, inviteCode: string): Promise<string | null> {
-  const rows = await sql`
-    select id
-    from workspaces
-    where invite_code = ${inviteCode}
-    limit 1
-  `;
-
-  return rows[0]?.id ? String(rows[0].id) : null;
+function normalizeSecret(value: string) {
+  return value.trim().replace(/\s+/g, '').toUpperCase();
 }
 
 export async function getState(workspaceId: string): Promise<AppState> {
   const sql = getSql();
   await ensureSchema();
 
-  const [workspaceRows, locationRows, employeeRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
-    sql`
-      select invite_code
-      from workspaces
-      where id = ${workspaceId}
-      limit 1
-    `,
+  const [locationRows, employeeRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
     sql`
       select id, name
       from locations
@@ -350,9 +254,6 @@ export async function getState(workspaceId: string): Promise<AppState> {
   }
 
   return {
-    workspace: {
-      inviteCode: String(workspaceRows[0]?.invite_code ?? ''),
-    },
     location: {
       id: DEFAULT_LOCATION.id,
       name: String(locationRows[0]?.name ?? DEFAULT_LOCATION.name),
