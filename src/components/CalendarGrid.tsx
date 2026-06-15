@@ -13,7 +13,7 @@ import { appFont, colors } from '../ui/theme';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
- type CalendarGridProps = {
+type CalendarGridProps = {
   month: string;
   state: AppState;
   onSelect: (date: string) => void;
@@ -87,7 +87,6 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                     >
                       {day}
                     </Text>
-                    {dayNote ? <View style={styles.dayNoteDot} /> : null}
                   </View>
                   {employeesOnShift.length > 0 ? (
                     <View style={styles.dayDots}>
@@ -96,6 +95,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                       ))}
                     </View>
                   ) : null}
+                  {dayNote ? <View style={styles.dayNoteStripe} /> : null}
                   {hoveredDay?.date === date ? (
                     <View style={styles.dayTooltip} pointerEvents="none">
                       <Text style={styles.dayTooltipText} numberOfLines={3}>
@@ -190,14 +190,12 @@ const styles = StyleSheet.create({
   dayTextToday: {
     color: colors.text,
   },
-  dayNoteDot: {
-    position: 'absolute',
-    right: 3,
-    top: 3,
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+  dayNoteStripe: {
+    width: 22,
+    height: 2,
+    borderRadius: 2,
     backgroundColor: '#dc2626',
+    opacity: 0.9,
   },
   dayDots: {
     width: '100%',
