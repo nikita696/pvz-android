@@ -1,3 +1,16 @@
+export const EMPLOYEE_COLOR_PALETTE = [
+  '#7c3aed',
+  '#0e7490',
+  '#b45309',
+  '#047857',
+  '#4f46e5',
+  '#2563eb',
+  '#dc2626',
+  '#db2777',
+  '#65a30d',
+  '#9333ea',
+] as const;
+
 export interface Location {
   id: string;
   name: string;
@@ -56,7 +69,7 @@ export interface SalarySummary {
 
 export type ApiAction =
   | { action: 'updateLocation'; name: string }
-  | { action: 'addEmployee'; name: string; dailyRate: number }
+  | { action: 'addEmployee'; name: string; dailyRate: number; color?: string }
   | { action: 'toggleShift'; employeeId: string; date: string }
   | { action: 'saveDayNote'; date: string; comment: string }
   | {
