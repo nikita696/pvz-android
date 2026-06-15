@@ -59,7 +59,6 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                   key={date}
                   style={[
                     styles.dayCell,
-                    dayNote && styles.dayCellWithNote,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
                   ]}
@@ -72,6 +71,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                   onHoverOut={() => setHoveredDay(null)}
                   testID={`day-${day}`}
                 >
+                  {dayNote ? <View style={styles.dayNoteCorner} /> : null}
                   <View
                     style={[
                       styles.dayNumberBadge,
@@ -150,11 +150,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
     paddingTop: 2,
     position: 'relative',
-    borderLeftWidth: 0,
+    overflow: 'hidden',
   },
-  dayCellWithNote: {
-    borderLeftWidth: 3,
-    borderLeftColor: '#dc2626',
+  dayNoteCorner: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+    borderTopWidth: 12,
+    borderLeftWidth: 12,
+    borderTopColor: '#dc2626',
+    borderLeftColor: 'transparent',
+    zIndex: 5,
   },
   dayCellEmpty: {
     backgroundColor: '#F0EFEC',
