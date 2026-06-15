@@ -39,26 +39,34 @@
     <!-- The root element for your Expo app. -->
     <div id="root"></div>
     <script>
+      window.__PVZ_WEB_VERSION__ = 'note-corner-marker-20260615';
+
       if ('serviceWorker' in navigator) {
-        var refreshing = false;
-
-        navigator.serviceWorker.addEventListener('controllerchange', function () {
-          if (refreshing) {
-            return;
-          }
-
-          refreshing = true;
-          window.location.reload();
-        });
-
         window.addEventListener('load', function () {
           navigator.serviceWorker
-            .register('/sw.js', { updateViaCache: 'none' })
-            .then(function (registration) {
-              return registration.update();
+            .getRegistrations()
+            .then(function (registrations) {
+              return Promise.all(registrations.map(function (registration) {
+                return registration.unregister();
+              }));
             })
             .catch(function (error) {
-              console.warn('Service worker registration failed:', error);
+              console.warn('Service worker cleanup failed:', error);
+            });
+        });
+      }
+
+      if ('caches' in window) {
+        window.addEventListener('load', function () {
+          caches
+            .keys()
+            .then(function (keys) {
+              return Promise.all(keys.map(function (key) {
+                return caches.delete(key);
+              }));
+            })
+            .catch(function (error) {
+              console.warn('Cache cleanup failed:', error);
             });
         });
       }
