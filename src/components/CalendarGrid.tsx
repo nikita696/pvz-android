@@ -59,6 +59,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                   key={date}
                   style={[
                     styles.dayCell,
+                    dayNote && styles.dayCellWithNote,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
                   ]}
@@ -95,7 +96,6 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                       ))}
                     </View>
                   ) : null}
-                  {dayNote ? <View style={styles.dayNoteStripe} /> : null}
                   {hoveredDay?.date === date ? (
                     <View style={styles.dayTooltip} pointerEvents="none">
                       <Text style={styles.dayTooltipText} numberOfLines={3}>
@@ -150,6 +150,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
     paddingTop: 2,
     position: 'relative',
+    borderLeftWidth: 0,
+  },
+  dayCellWithNote: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc2626',
   },
   dayCellEmpty: {
     backgroundColor: '#F0EFEC',
@@ -189,13 +194,6 @@ const styles = StyleSheet.create({
   },
   dayTextToday: {
     color: colors.text,
-  },
-  dayNoteStripe: {
-    width: 22,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: '#dc2626',
-    opacity: 0.9,
   },
   dayDots: {
     width: '100%',
