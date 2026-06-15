@@ -1,10 +1,17 @@
 import { neon } from '@neondatabase/serverless';
 
-import type { AppState, DayNote, Employee, PaymentKind, SalaryPayment, Shift } from '../src/domain/types';
+import {
+  EMPLOYEE_COLOR_PALETTE,
+  type AppState,
+  type DayNote,
+  type Employee,
+  type PaymentKind,
+  type SalaryPayment,
+  type Shift,
+} from '../src/domain/types';
 
-const DEFAULT_LOCATION = { id: 'main', name: '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043f\u0443\u043d\u043a\u0442' };
+const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
 const DEFAULT_WORKSPACE_NAME = 'PVZ workspace';
-const EMPLOYEE_COLORS = ['#7c3aed', '#0e7490', '#b45309', '#047857', '#4f46e5', '#2563eb'];
 
 type Sql = ReturnType<typeof getSql>;
 
@@ -117,6 +124,10 @@ export async function ensureSchema() {
   await addWorkspaceColumn(sql, 'salary_payments', defaultWorkspaceId);
   await addWorkspaceColumn(sql, 'day_notes', defaultWorkspaceId);
   await sql`
+    alter table employees
+    add column if not exists color text
+  `;
+  await sql`
     alter table salary_payments
     add column if not exists kind text not null default 'payment'
   `;
@@ -125,6 +136,7 @@ export async function ensureSchema() {
     add column if not exists note text not null default ''
   `;
   await ensureDayNotesPrimaryKey(sql);
+  await ensureEmployeeColors(sql, defaultWorkspaceId);
   await sql`
     insert into locations (id, workspace_id, name)
     select ${DEFAULT_LOCATION.id}, ${defaultWorkspaceId}, ${DEFAULT_LOCATION.name}
@@ -157,6 +169,35 @@ async function ensureDayNotesPrimaryKey(sql: Sql) {
       end if;
     end $$;
   `;
+}
+
+async function ensureEmployeeColors(sql: Sql, workspaceId: string) {
+  const rows = await sql`
+    select id, color
+    from employees
+    where workspace_id = ${workspaceId}
+    order by active desc, created_at asc
+  `;
+  const usedColors = new Set<string>();
+
+  for (const row of rows) {
+    const employeeId = String(row.id);
+    const currentColor = getValidEmployeeColor(typeof row.color === 'string' ? row.color : null);
+    const nextColor = currentColor && !usedColors.has(currentColor)
+      ? currentColor
+      : getFirstAvailableEmployeeColor(usedColors, employeeId);
+
+    usedColors.add(nextColor);
+
+    if (row.color !== nextColor) {
+      await sql`
+        update employees
+        set color = ${nextColor}
+        where id = ${employeeId}
+          and workspace_id = ${workspaceId}
+      `;
+    }
+  }
 }
 
 export async function requireWorkspaceSession(token: string | null): Promise<string> {
@@ -244,7 +285,7 @@ export async function getState(workspaceId: string): Promise<AppState> {
       limit 1
     `,
     sql`
-      select id, name, daily_rate, active, created_at
+      select id, name, daily_rate, color, active, created_at
       from employees
       where workspace_id = ${workspaceId}
       order by active desc, created_at asc
@@ -285,7 +326,7 @@ export async function getState(workspaceId: string): Promise<AppState> {
       id: String(row.id),
       name: String(row.name),
       dailyRate: Number(row.daily_rate),
-      color: getEmployeeColor(String(row.id)),
+      color: getEmployeeColor(String(row.id), typeof row.color === 'string' ? row.color : null),
       active: Boolean(row.active),
       createdAt: new Date(String(row.created_at)).toISOString(),
     })),
@@ -310,12 +351,14 @@ export async function getState(workspaceId: string): Promise<AppState> {
   };
 }
 
-export async function addEmployee(workspaceId: string, name: string, dailyRate: number) {
+export async function addEmployee(workspaceId: string, name: string, dailyRate: number, color?: string) {
   const sql = getSql();
   await ensureSchema();
+  const selectedColor = getValidEmployeeColor(color ?? null) ?? await getNextEmployeeColor(sql, workspaceId);
+
   await sql`
-    insert into employees (id, workspace_id, name, daily_rate)
-    values (${crypto.randomUUID()}, ${workspaceId}, ${name}, ${Math.round(dailyRate)})
+    insert into employees (id, workspace_id, name, daily_rate, color)
+    values (${crypto.randomUUID()}, ${workspaceId}, ${name}, ${Math.round(dailyRate)}, ${selectedColor})
   `;
 }
 
@@ -465,6 +508,40 @@ export async function deletePayment(workspaceId: string, id: string, employeeId:
   `;
 }
 
+async function getNextEmployeeColor(sql: Sql, workspaceId: string) {
+  const rows = await sql`
+    select id, color
+    from employees
+    where workspace_id = ${workspaceId}
+      and active = true
+    order by created_at asc
+  `;
+  const usedColors = new Set(
+    rows.map((row) => getEmployeeColor(String(row.id), typeof row.color === 'string' ? row.color : null)),
+  );
+
+  return getFirstAvailableEmployeeColor(usedColors, crypto.randomUUID());
+}
+
+function getFirstAvailableEmployeeColor(usedColors: Set<string>, seed: string) {
+  const availableColor = EMPLOYEE_COLOR_PALETTE.find((color) => !usedColors.has(color));
+
+  if (availableColor) {
+    return availableColor;
+  }
+
+  return EMPLOYEE_COLOR_PALETTE[getEmployeeColorIndex(seed)];
+}
+
+function getValidEmployeeColor(color: string | null): string | null {
+  if (!color) {
+    return null;
+  }
+
+  const normalizedColor = color.trim().toLowerCase();
+  return EMPLOYEE_COLOR_PALETTE.find((paletteColor) => paletteColor.toLowerCase() === normalizedColor) ?? null;
+}
+
 async function requireEmployee(sql: Sql, workspaceId: string, employeeId: string) {
   const rows = await sql`
     select id
@@ -483,7 +560,11 @@ function locationRowId(workspaceId: string) {
   return `location:${workspaceId}`;
 }
 
-function getEmployeeColor(employeeId: string): string {
+function getEmployeeColor(employeeId: string, savedColor: string | null): string {
+  return getValidEmployeeColor(savedColor) ?? EMPLOYEE_COLOR_PALETTE[getEmployeeColorIndex(employeeId)];
+}
+
+function getEmployeeColorIndex(employeeId: string): number {
   const hash = [...employeeId].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return EMPLOYEE_COLORS[hash % EMPLOYEE_COLORS.length];
+  return hash % EMPLOYEE_COLOR_PALETTE.length;
 }
