@@ -13,7 +13,7 @@ import { appFont, colors } from '../ui/theme';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-type CalendarGridProps = {
+ type CalendarGridProps = {
   month: string;
   state: AppState;
   onSelect: (date: string) => void;
@@ -45,11 +45,13 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
               const today = date === TODAY;
               const employeesOnShift = getShiftEmployeesByDate(state, date);
               const dayOff = getDayOffInfo(date);
+              const dayNote = state.dayNotes.find((note) => note.date === date && note.comment.trim());
               const tooltipParts = [
                 employeesOnShift.length
                   ? `На смене: ${employeesOnShift.map((employee) => employee.name).join(', ')}`
                   : '',
                 dayOff?.label ?? '',
+                dayNote ? `Комментарий: ${dayNote.comment}` : '',
               ].filter(Boolean);
 
               return (
@@ -85,6 +87,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                     >
                       {day}
                     </Text>
+                    {dayNote ? <View style={styles.dayNoteDot} /> : null}
                   </View>
                   {employeesOnShift.length > 0 ? (
                     <View style={styles.dayDots}>
@@ -95,7 +98,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                   ) : null}
                   {hoveredDay?.date === date ? (
                     <View style={styles.dayTooltip} pointerEvents="none">
-                      <Text style={styles.dayTooltipText} numberOfLines={2}>
+                      <Text style={styles.dayTooltipText} numberOfLines={3}>
                         {hoveredDay.label}
                       </Text>
                     </View>
@@ -164,6 +167,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   dayNumberBadgeToday: {
     borderWidth: 2,
@@ -185,6 +189,15 @@ const styles = StyleSheet.create({
   },
   dayTextToday: {
     color: colors.text,
+  },
+  dayNoteDot: {
+    position: 'absolute',
+    right: 3,
+    top: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#dc2626',
   },
   dayDots: {
     width: '100%',
