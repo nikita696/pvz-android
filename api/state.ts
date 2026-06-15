@@ -13,7 +13,7 @@ import {
   updateLocationName,
   updatePayment,
 } from './_db';
-import type { ApiAction } from '../src/domain/types';
+import { EMPLOYEE_COLOR_PALETTE, type ApiAction } from '../src/domain/types';
 
 const DEFAULT_WORKSPACE_ID = process.env.PVZ_DEFAULT_WORKSPACE_ID?.trim() || 'nick-main';
 
@@ -65,11 +65,20 @@ async function applyAction(workspaceId: string, body: ApiAction) {
   }
 
   if (body.action === 'addEmployee') {
+    const color = body.color?.trim();
+    const validColor = color && EMPLOYEE_COLOR_PALETTE.includes(color as (typeof EMPLOYEE_COLOR_PALETTE)[number])
+      ? color
+      : undefined;
+
     if (!body.name.trim() || !Number.isFinite(body.dailyRate) || body.dailyRate <= 0) {
       throw new Error('BAD_REQUEST');
     }
 
-    await addEmployee(workspaceId, body.name.trim(), body.dailyRate);
+    if (color && !validColor) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await addEmployee(workspaceId, body.name.trim(), body.dailyRate, validColor);
     return;
   }
 
