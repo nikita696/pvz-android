@@ -55,3 +55,7 @@ npm run web
 ## Recovery note
 
 Production is intentionally restored from `main` without owner-login or invite blocking.
+
+## Deploy note
+
+Manual deploy trigger for employee color storage and day comment marker.
