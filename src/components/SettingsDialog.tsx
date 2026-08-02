@@ -72,6 +72,7 @@ export function SettingsDialog({
                           accessibilityRole="button"
                           accessibilityLabel={`Цвет ${color} для ${employee.name}`}
                           disabled={busy}
+                          hitSlop={7}
                           style={[
                             styles.colorButton,
                             { backgroundColor: color },
@@ -191,13 +192,13 @@ const styles = StyleSheet.create({
   },
   palette: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 9,
+    justifyContent: 'space-between',
+    gap: 4,
   },
   colorButton: {
-    width: 29,
-    height: 29,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 9,
     borderWidth: 2,
     borderColor: 'transparent',
   },

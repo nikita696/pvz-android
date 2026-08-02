@@ -26,7 +26,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
   const [hoveredDay, setHoveredDay] = useState<{ date: string; label: string } | null>(null);
 
   return (
-    <View style={styles.calendar}>
+    <View style={styles.calendar} testID="calendar-grid">
       <View style={styles.weekRow}>
         {WEEKDAYS.map((day, dayIndex) => (
           <Text key={day} style={[styles.weekday, dayIndex >= 5 && styles.weekdayWeekend]}>
@@ -92,7 +92,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                     {dayNote ? <View style={styles.dayNoteUnderline} testID={`day-note-${day}`} /> : null}
                   </View>
                   {employeesOnShift.length > 0 ? (
-                    <View style={styles.dayDots}>
+                    <View style={styles.dayDots} testID={`day-employees-${day}`}>
                       {employeesOnShift.slice(0, 3).map((employee) => (
                         <EmployeeAvatar
                           key={employee.id}
@@ -133,7 +133,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
 
 const styles = StyleSheet.create({
   calendar: {
-    gap: 14,
+    gap: 10,
   },
   weekRow: {
     flexDirection: 'row',
@@ -151,20 +151,21 @@ const styles = StyleSheet.create({
     color: colors.weekendText,
   },
   weeks: {
-    gap: 12,
+    gap: 6,
   },
   daysRow: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 3,
   },
   dayCell: {
     flex: 1,
-    aspectRatio: 1,
-    borderRadius: 14,
+    minWidth: 0,
+    height: 52,
+    borderRadius: 12,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    gap: 3,
+    gap: 2,
     paddingHorizontal: 2,
     paddingTop: 2,
     position: 'relative',
@@ -183,8 +184,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#dc2626',
   },
   dayCellEmpty: {
-    backgroundColor: '#F0EFEC',
-    opacity: 0.76,
+    backgroundColor: 'transparent',
   },
   dayCellOff: {
     backgroundColor: 'transparent',

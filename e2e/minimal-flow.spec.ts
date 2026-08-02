@@ -444,6 +444,20 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText('\u041c\u0430\u0439 2026')).toBeVisible();
   await expect(page.getByText('\u0423\u0434\u043e\u0431\u043d\u044b\u0439 \u0442\u0440\u0435\u043a\u0435\u0440 \u0441\u043c\u0435\u043d \u0438 \u0432\u044b\u043f\u043b\u0430\u0442')).toHaveCount(0);
   await expect(page.getByTestId('day-31').getByText('\u0410', { exact: true })).toBeVisible();
+  const calendarBox = await page.getByTestId('calendar-grid').boundingBox();
+  const shiftDayBox = await page.getByTestId('day-31').boundingBox();
+  const shiftAvatarBox = await page.getByTestId('day-31').getByLabel(`Сотрудник ${ANNA}`).boundingBox();
+  const initialViewport = page.viewportSize();
+  expect(calendarBox).not.toBeNull();
+  expect(shiftDayBox).not.toBeNull();
+  expect(shiftAvatarBox).not.toBeNull();
+  expect(initialViewport).not.toBeNull();
+  expect(calendarBox!.x).toBeGreaterThanOrEqual(0);
+  expect(calendarBox!.x + calendarBox!.width).toBeLessThanOrEqual(initialViewport!.width);
+  expect(shiftDayBox!.height).toBeGreaterThanOrEqual(50);
+  expect(shiftAvatarBox!.y + shiftAvatarBox!.height).toBeLessThanOrEqual(
+    shiftDayBox!.y + shiftDayBox!.height,
+  );
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
   await expect(page.getByTestId('toggle-selected-day-employees')).toBeVisible();
 
@@ -555,6 +569,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
   await page.getByTestId('open-settings').click();
   await expect(page.getByText('\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438', { exact: true })).toBeVisible();
+  await expect(page.getByTestId(/^employee-color-emp-1-/)).toHaveCount(7);
   await page.getByTestId('employee-color-emp-1-#0e7490').click();
   await expect.poll(() => serverState.employees.find((employee) => employee.id === 'emp-1')?.color).toBe('#0e7490');
   await expect(page.getByText('\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u044e', { exact: true })).toHaveCount(0);

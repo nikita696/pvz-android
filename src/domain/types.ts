@@ -2,13 +2,10 @@ export const EMPLOYEE_COLOR_PALETTE = [
   '#7c3aed',
   '#0e7490',
   '#b45309',
-  '#047857',
-  '#4f46e5',
   '#2563eb',
   '#dc2626',
   '#db2777',
   '#65a30d',
-  '#9333ea',
 ] as const;
 
 export interface Location {

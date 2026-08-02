@@ -14,12 +14,24 @@ type MonthStepperProps = {
 export function MonthStepper({ month, formatMonthLabel, shiftMonth, onChange }: MonthStepperProps) {
   return (
     <View style={styles.monthStepper}>
-      <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, -1))}>
-        <ChevronLeft size={26} color={colors.muted} />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Предыдущий месяц"
+        style={styles.roundButton}
+        onPress={() => onChange(shiftMonth(month, -1))}
+      >
+        <ChevronLeft size={24} color={colors.muted} />
       </Pressable>
-      <Text style={styles.monthText}>{formatMonthLabel(month)}</Text>
-      <Pressable style={styles.roundButton} onPress={() => onChange(shiftMonth(month, 1))}>
-        <ChevronRight size={26} color={colors.muted} />
+      <Text style={styles.monthText} numberOfLines={1}>
+        {formatMonthLabel(month)}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Следующий месяц"
+        style={styles.roundButton}
+        onPress={() => onChange(shiftMonth(month, 1))}
+      >
+        <ChevronRight size={24} color={colors.muted} />
       </Pressable>
     </View>
   );
@@ -31,12 +43,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 6,
   },
   roundButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
@@ -44,8 +56,8 @@ const styles = StyleSheet.create({
   monthText: {
     fontFamily: appFont,
     color: colors.text,
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 26,
+    lineHeight: 32,
     flex: 1,
     textAlign: 'center',
     fontWeight: '900',
