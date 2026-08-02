@@ -70,6 +70,7 @@ export interface SalarySummary {
 export type ApiAction =
   | { action: 'updateLocation'; name: string }
   | { action: 'addEmployee'; name: string; dailyRate: number; color?: string }
+  | { action: 'updateEmployeeColor'; employeeId: string; color: string }
   | { action: 'toggleShift'; employeeId: string; date: string }
   | { action: 'saveDayNote'; date: string; comment: string }
   | {
@@ -91,4 +92,5 @@ export type ApiAction =
     }
   | { action: 'deletePayment'; id: string; employeeId: string }
   | { action: 'archiveEmployee'; employeeId: string }
-  | { action: 'deleteEmployee'; employeeId: string };
+  | { action: 'deleteEmployee'; employeeId: string }
+  | { action: 'importState'; state: AppState };

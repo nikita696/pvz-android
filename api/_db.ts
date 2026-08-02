@@ -9,6 +9,7 @@ import {
   type SalaryPayment,
   type Shift,
 } from '../src/domain/types';
+import { normalizeImportedState } from '../src/domain/backup';
 
 const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
 const DEFAULT_WORKSPACE_NAME = 'PVZ workspace';
@@ -70,6 +71,18 @@ export async function ensureSchema() {
       workspace_id text not null references workspaces(id) on delete cascade,
       created_at timestamptz not null default now()
     )
+  `;
+  await sql`
+    create table if not exists workspace_backups (
+      id text primary key,
+      workspace_id text not null references workspaces(id) on delete cascade,
+      snapshot jsonb not null,
+      created_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    create index if not exists workspace_backups_workspace_created_idx
+    on workspace_backups (workspace_id, created_at desc)
   `;
   await sql`
     insert into workspaces (id, name)
@@ -362,6 +375,28 @@ export async function addEmployee(workspaceId: string, name: string, dailyRate: 
   `;
 }
 
+export async function updateEmployeeColor(workspaceId: string, employeeId: string, color: string) {
+  const sql = getSql();
+  await ensureSchema();
+  const selectedColor = getValidEmployeeColor(color);
+
+  if (!selectedColor) {
+    throw new Error('BAD_REQUEST');
+  }
+
+  const rows = await sql`
+    update employees
+    set color = ${selectedColor}
+    where id = ${employeeId}
+      and workspace_id = ${workspaceId}
+    returning id
+  `;
+
+  if (!rows.length) {
+    throw new Error('BAD_REQUEST');
+  }
+}
+
 export async function updateLocationName(workspaceId: string, name: string) {
   const sql = getSql();
   await ensureSchema();
@@ -506,6 +541,97 @@ export async function deletePayment(workspaceId: string, id: string, employeeId:
       and employee_id = ${employeeId}
       and workspace_id = ${workspaceId}
   `;
+}
+
+export async function importWorkspaceState(workspaceId: string, value: unknown) {
+  const nextState = normalizeImportedState(value);
+  const sql = getSql();
+  await ensureSchema();
+  const previousState = await getState(workspaceId);
+  const employeesJson = JSON.stringify(nextState.employees.map((employee) => ({
+    id: employee.id,
+    name: employee.name,
+    daily_rate: employee.dailyRate,
+    color: employee.color,
+    active: employee.active,
+    created_at: employee.createdAt,
+  })));
+  const shiftsJson = JSON.stringify(nextState.shifts.map((shift) => ({
+    id: shift.id,
+    employee_id: shift.employeeId,
+    work_date: shift.date,
+  })));
+  const paymentsJson = JSON.stringify(nextState.payments.map((payment) => ({
+    id: payment.id,
+    employee_id: payment.employeeId,
+    amount: payment.amount,
+    paid_at: payment.paidAt,
+    kind: payment.kind,
+    note: payment.comment,
+  })));
+  const dayNotesJson = JSON.stringify(nextState.dayNotes.map((note) => ({
+    work_date: note.date,
+    note: note.comment,
+    updated_at: note.updatedAt,
+  })));
+
+  await sql.transaction((transaction) => [
+    transaction`
+      insert into workspace_backups (id, workspace_id, snapshot)
+      values (${crypto.randomUUID()}, ${workspaceId}, cast(${JSON.stringify(previousState)} as jsonb))
+    `,
+    transaction`delete from salary_payments where workspace_id = ${workspaceId}`,
+    transaction`delete from shifts where workspace_id = ${workspaceId}`,
+    transaction`delete from day_notes where workspace_id = ${workspaceId}`,
+    transaction`delete from employees where workspace_id = ${workspaceId}`,
+    transaction`delete from locations where workspace_id = ${workspaceId}`,
+    transaction`
+      insert into locations (id, workspace_id, name)
+      values (${locationRowId(workspaceId)}, ${workspaceId}, ${nextState.location.name})
+    `,
+    transaction`
+      insert into employees (id, workspace_id, name, daily_rate, color, active, created_at)
+      select item.id, ${workspaceId}, item.name, item.daily_rate, item.color, item.active, item.created_at
+      from jsonb_to_recordset(cast(${employeesJson} as jsonb)) as item(
+        id text,
+        name text,
+        daily_rate integer,
+        color text,
+        active boolean,
+        created_at timestamptz
+      )
+    `,
+    transaction`
+      insert into shifts (id, workspace_id, employee_id, work_date)
+      select item.id, ${workspaceId}, item.employee_id, item.work_date
+      from jsonb_to_recordset(cast(${shiftsJson} as jsonb)) as item(
+        id text,
+        employee_id text,
+        work_date date
+      )
+    `,
+    transaction`
+      insert into salary_payments (id, workspace_id, employee_id, amount, paid_at, kind, note)
+      select item.id, ${workspaceId}, item.employee_id, item.amount, item.paid_at, item.kind, item.note
+      from jsonb_to_recordset(cast(${paymentsJson} as jsonb)) as item(
+        id text,
+        employee_id text,
+        amount integer,
+        paid_at date,
+        kind text,
+        note text
+      )
+    `,
+    transaction`
+      insert into day_notes (workspace_id, work_date, note, updated_at)
+      select ${workspaceId}, item.work_date, item.note, item.updated_at
+      from jsonb_to_recordset(cast(${dayNotesJson} as jsonb)) as item(
+        work_date date,
+        note text,
+        updated_at timestamptz
+      )
+    `,
+  ]);
 }
 
 async function getNextEmployeeColor(sql: Sql, workspaceId: string) {

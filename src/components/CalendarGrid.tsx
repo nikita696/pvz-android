@@ -10,6 +10,7 @@ import {
 import { TODAY } from '../domain/seed';
 import type { AppState } from '../domain/types';
 import { appFont, colors } from '../ui/theme';
+import { EmployeeAvatar } from './EmployeeAvatar';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
@@ -71,7 +72,6 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                   onHoverOut={() => setHoveredDay(null)}
                   testID={`day-${day}`}
                 >
-                  {dayNote ? <View style={styles.dayNoteCorner} /> : null}
                   <View
                     style={[
                       styles.dayNumberBadge,
@@ -88,11 +88,17 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                     >
                       {day}
                     </Text>
+                    {dayNote ? <View style={styles.dayNoteUnderline} testID={`day-note-${day}`} /> : null}
                   </View>
                   {employeesOnShift.length > 0 ? (
                     <View style={styles.dayDots}>
                       {employeesOnShift.slice(0, 3).map((employee) => (
-                        <View key={employee.id} style={[styles.dayDot, { backgroundColor: employee.color }]} />
+                        <EmployeeAvatar
+                          key={employee.id}
+                          name={employee.name}
+                          color={employee.color}
+                          size="tiny"
+                        />
                       ))}
                     </View>
                   ) : null}
@@ -152,17 +158,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-  dayNoteCorner: {
+  dayNoteUnderline: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 0,
-    height: 0,
-    borderTopWidth: 12,
-    borderLeftWidth: 12,
-    borderTopColor: '#dc2626',
-    borderLeftColor: 'transparent',
-    zIndex: 5,
+    bottom: 2,
+    width: 15,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#dc2626',
   },
   dayCellEmpty: {
     backgroundColor: '#F0EFEC',
@@ -211,12 +213,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     overflow: 'hidden',
     gap: 4,
-  },
-  dayDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    opacity: 0.72,
   },
   dayTooltip: {
     position: 'absolute',

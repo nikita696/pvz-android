@@ -3,6 +3,7 @@ import {
   Archive,
   ChevronDown,
   ChevronRight,
+  Cog,
   PencilLine,
   Plus,
   RefreshCw,
@@ -22,10 +23,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiRequestError, claimInvite, createWorkspace, fetchState, sendAction } from './api';
+import { exportWorkspaceBackup, pickWorkspaceBackup } from './backupFile';
 import { CalendarGrid } from './components/CalendarGrid';
+import { EmployeeAvatar } from './components/EmployeeAvatar';
 import { MonthStepper } from './components/MonthStepper';
 import { SelectedDayPanel } from './components/SelectedDayPanel';
+import { SettingsDialog } from './components/SettingsDialog';
 import { Dialog, EmptyState, Field, Notice } from './components/primitives';
+import type { WorkspaceBackup } from './domain/backup';
 import { getDayOffInfo } from './domain/calendar';
 import {
   calculateSalary,
@@ -79,6 +84,8 @@ type DialogName =
   | 'dayNote'
   | 'location'
   | 'payment'
+  | 'settings'
+  | 'importBackup'
   | null;
 type PaymentMonthGroup = {
   month: string;
@@ -104,6 +111,7 @@ export default function AppRoot() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentComment, setPaymentComment] = useState('');
   const [paymentDateText, setPaymentDateText] = useState(formatDate(TODAY));
+  const [paymentError, setPaymentError] = useState('');
   const [dayNoteText, setDayNoteText] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -113,6 +121,9 @@ export default function AppRoot() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsMessage, setSettingsMessage] = useState('');
+  const [pendingBackup, setPendingBackup] = useState<WorkspaceBackup | null>(null);
 
   const activeEmployees = useMemo(
     () => state.employees.filter((employee) => employee.active),
@@ -329,22 +340,26 @@ export default function AppRoot() {
 
   async function addPayment() {
     const amount = Number(paymentAmount);
-    const employeeId = paymentEmployeeId || activeEmployees[0]?.id;
     const paidAt = parseDateInput(paymentDateText);
 
-    if (!employeeId || !Number.isFinite(amount) || amount <= 0) {
-      setError('Выбери сотрудника и сумму.');
+    if (!paymentEmployeeId) {
+      setPaymentError('Выберите сотрудника.');
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPaymentError('Укажите сумму выплаты.');
       return;
     }
 
     if (!paidAt) {
-      setError('Укажи дату в формате ДД.ММ.ГГГГ.');
+      setPaymentError('Укажите дату в формате ДД.ММ.ГГГГ.');
       return;
     }
 
     const saved = await mutate({
       action: 'addPayment',
-      employeeId,
+      employeeId: paymentEmployeeId,
       amount,
       paidAt,
       kind: paymentKind,
@@ -359,7 +374,9 @@ export default function AppRoot() {
   }
 
   function openPaymentDialog() {
+    resetPaymentForm();
     setPaymentDateText(formatDate(selectedDate));
+    setPaymentError('');
     setDialog('payment');
   }
 
@@ -474,6 +491,73 @@ export default function AppRoot() {
     setPaymentKind('payment');
     setPaymentDateText(formatDate(selectedDate));
     setPaymentToEditId('');
+    setPaymentError('');
+  }
+
+  function openSettings() {
+    setSettingsError('');
+    setSettingsMessage('');
+    setDialog('settings');
+  }
+
+  async function changeEmployeeColor(employeeId: string, color: string) {
+    setSettingsError('');
+    setSettingsMessage('');
+    const saved = await mutate({ action: 'updateEmployeeColor', employeeId, color });
+
+    if (!saved) {
+      setSettingsError('Не удалось сохранить цвет сотрудника.');
+    }
+  }
+
+  async function exportBackup() {
+    setSettingsError('');
+    setSettingsMessage('');
+    setSaving(true);
+
+    try {
+      const fileName = await exportWorkspaceBackup(state);
+      setSettingsMessage(`Резервная копия ${fileName} подготовлена.`);
+    } catch (caught) {
+      setSettingsError(caught instanceof Error ? caught.message : 'Не удалось сохранить резервную копию.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function selectBackupForImport() {
+    setSettingsError('');
+    setSettingsMessage('');
+
+    try {
+      const backup = await pickWorkspaceBackup();
+      if (!backup) {
+        return;
+      }
+
+      setPendingBackup(backup);
+      setDialog('importBackup');
+    } catch (caught) {
+      setSettingsError(caught instanceof Error ? caught.message : 'Не удалось прочитать резервную копию.');
+    }
+  }
+
+  async function importSelectedBackup() {
+    if (!pendingBackup) {
+      return;
+    }
+
+    const restored = await mutate({ action: 'importState', state: pendingBackup.state });
+    if (!restored) {
+      setSettingsError('Не удалось восстановить резервную копию. Текущие данные не изменены.');
+      setDialog('settings');
+      return;
+    }
+
+    setPendingBackup(null);
+    setSettingsError('');
+    setSettingsMessage('Резервная копия восстановлена. Предыдущее состояние сохранено в Neon.');
+    setDialog('settings');
   }
 
   function openAssignment(date: string) {
@@ -591,7 +675,6 @@ export default function AppRoot() {
                 <PencilLine size={14} color={colors.accentText} />
               </View>
             </Pressable>
-            <Text style={styles.subtitle}>Удобный трекер смен и выплат</Text>
           </View>
           <View style={styles.headerActions}>
             <Pressable
@@ -611,6 +694,15 @@ export default function AppRoot() {
               testID="refresh"
             >
               <RefreshCw size={20} color={colors.accentText} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Настройки"
+              style={styles.iconButton}
+              onPress={openSettings}
+              testID="open-settings"
+            >
+              <Cog size={20} color={colors.accentText} />
             </Pressable>
           </View>
         </View>
@@ -647,13 +739,13 @@ export default function AppRoot() {
                   <Text style={styles.muted}>Отработано по сегодня × ставка − выплаты и штрафы</Text>
                 </View>
                 <Pressable
-                  style={styles.smallButton}
+                  style={[styles.smallButton, styles.paymentButton]}
                   disabled={!activeEmployees.length}
                   onPress={openPaymentDialog}
                   testID="open-payment"
                 >
-                  <Plus size={18} color={colors.accentText} />
-                  <Text style={styles.smallButtonText}>Выплата</Text>
+                  <Plus size={19} color={colors.accentText} />
+                  <Text style={[styles.smallButtonText, styles.paymentButtonText]}>Выплата</Text>
                 </Pressable>
               </View>
               <View style={styles.totalCard}>
@@ -731,7 +823,7 @@ export default function AppRoot() {
                     testID={`assign-employee-${employee.name}`}
                   >
                     <View style={styles.employeeTitleRow}>
-                      <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                      <EmployeeAvatar name={employee.name} color={employee.color} />
                       <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
                     </View>
                     <Text style={[styles.shiftStatus, active && { color: employee.color }]}>
@@ -775,7 +867,7 @@ export default function AppRoot() {
               activeEmployees.map((employee) => (
                 <View key={employee.id} style={styles.employeeManagerRow}>
                   <View style={styles.employeeTitleRow}>
-                    <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                    <EmployeeAvatar name={employee.name} color={employee.color} />
                     <View>
                       <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
                       <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
@@ -802,7 +894,7 @@ export default function AppRoot() {
               {archivedEmployees.map((employee) => (
                 <View key={employee.id} style={styles.employeeManagerRow}>
                   <View style={styles.employeeTitleRow}>
-                    <View style={[styles.employeeDot, styles.employeeDotMuted]} />
+                    <EmployeeAvatar name={employee.name} color={employee.color} muted />
                     <View>
                       <Text style={styles.employeeName}>{employee.name}</Text>
                       <Text style={styles.muted}>Архивирован</Text>
@@ -859,19 +951,23 @@ export default function AppRoot() {
                 style={[
                   styles.chip,
                   { borderColor: employee.color },
-                  (paymentEmployeeId || activeEmployees[0]?.id) === employee.id && styles.chipActive,
-                  (paymentEmployeeId || activeEmployees[0]?.id) === employee.id && {
+                  paymentEmployeeId === employee.id && styles.chipActive,
+                  paymentEmployeeId === employee.id && {
                     backgroundColor: employee.color,
                     borderColor: employee.color,
                   },
                 ]}
-                onPress={() => setPaymentEmployeeId(employee.id)}
+                onPress={() => {
+                  setPaymentEmployeeId(employee.id);
+                  setPaymentError('');
+                }}
+                testID={`payment-employee-${employee.name}`}
               >
                 <Text
                   style={[
                     styles.chipText,
                     { color: employee.color },
-                    (paymentEmployeeId || activeEmployees[0]?.id) === employee.id && styles.chipTextActive,
+                    paymentEmployeeId === employee.id && styles.chipTextActive,
                   ]}
                 >
                   {employee.name}
@@ -879,6 +975,7 @@ export default function AppRoot() {
               </Pressable>
             ))}
           </View>
+          {paymentError ? <Notice text={paymentError} /> : null}
           <View style={styles.paymentTypeRow}>
             <Pressable
               style={[styles.paymentTypeButton, paymentKind === 'payment' && styles.paymentTypeButtonActive]}
@@ -935,6 +1032,52 @@ export default function AppRoot() {
             <Text style={styles.primaryButtonText}>
               {paymentKind === 'deduction' ? 'Сохранить удержание' : 'Сохранить выплату'}
             </Text>
+          </Pressable>
+        </Dialog>
+
+        <SettingsDialog
+          visible={dialog === 'settings'}
+          employees={state.employees}
+          busy={saving}
+          message={settingsMessage}
+          error={settingsError}
+          onClose={() => setDialog(null)}
+          onColorChange={(employeeId, color) => void changeEmployeeColor(employeeId, color)}
+          onExport={() => void exportBackup()}
+          onImport={() => void selectBackupForImport()}
+        />
+
+        <Dialog
+          visible={dialog === 'importBackup' && Boolean(pendingBackup)}
+          title="Восстановить копию?"
+          onClose={() => {
+            setPendingBackup(null);
+            setDialog('settings');
+          }}
+        >
+          {pendingBackup ? (
+            <View style={styles.importSummary}>
+              <Text style={styles.warningText}>
+                Текущие данные этого ПВЗ будут заменены. Перед заменой сервер автоматически сохранит их в Neon.
+              </Text>
+              <Text style={styles.importSummaryText}>
+                Сотрудников: {pendingBackup.state.employees.length} · смен: {pendingBackup.state.shifts.length}
+              </Text>
+              <Text style={styles.importSummaryText}>
+                Выплат: {pendingBackup.state.payments.length} · комментариев: {pendingBackup.state.dayNotes.length}
+              </Text>
+              <Text style={styles.importSummaryText}>
+                Копия от {formatDateTime(pendingBackup.exportedAt)}
+              </Text>
+            </View>
+          ) : null}
+          <Pressable
+            style={styles.dangerButton}
+            disabled={saving}
+            onPress={() => void importSelectedBackup()}
+            testID="confirm-import-backup"
+          >
+            <Text style={styles.dangerButtonText}>Восстановить данные</Text>
           </Pressable>
         </Dialog>
 
@@ -1094,7 +1237,7 @@ function SalaryCard({
     >
       <View style={styles.salaryCardInfo}>
         <View style={styles.employeeTitleRow}>
-          <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+          <EmployeeAvatar name={employee.name} color={employee.color} />
           <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
         </View>
         <Text style={styles.muted}>
@@ -1238,7 +1381,8 @@ function shiftMonth(month: string, offset: number): string {
 
 function formatMonthLabel(month: string): string {
   const [year, monthNumber] = month.split('-').map(Number);
-  return `${MONTH_NAMES[monthNumber - 1]} ${year}`;
+  const monthName = MONTH_NAMES[monthNumber - 1];
+  return `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)} ${year}`;
 }
 
 function formatHistoryMonthLabel(month: string): string {
@@ -1250,6 +1394,22 @@ function formatHistoryMonthLabel(month: string): string {
 function formatDate(date: string): string {
   const [year, month, day] = date.split('-');
   return `${day}.${month}.${year}`;
+}
+
+function formatDateTime(timestamp: string): string {
+  const value = new Date(timestamp);
+
+  if (Number.isNaN(value.getTime())) {
+    return 'дата не указана';
+  }
+
+  return value.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function parseDateInput(value: string): string | null {
@@ -1354,13 +1514,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  subtitle: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 19,
-    marginTop: 4,
   },
   iconButton: {
     width: 48,
@@ -1488,6 +1641,17 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '800',
   },
+  paymentButton: {
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  paymentButtonText: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
   employeeName: {
     fontFamily: appFont,
     color: colors.text,
@@ -1498,16 +1662,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  employeeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#ffffff',
-  },
-  employeeDotMuted: {
-    backgroundColor: colors.muted,
   },
   assignmentList: {
     gap: 8,
@@ -1775,6 +1929,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     gap: 4,
+  },
+  importSummary: {
+    borderRadius: 12,
+    padding: 13,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 5,
+  },
+  importSummaryText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   historyScroll: {
     maxHeight: 460,

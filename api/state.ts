@@ -8,12 +8,15 @@ import {
   deletePayment,
   deleteArchivedEmployee,
   getState,
+  importWorkspaceState,
   saveDayNote,
   toggleShift,
   updateLocationName,
   updatePayment,
+  updateEmployeeColor,
 } from './_db';
 import { EMPLOYEE_COLOR_PALETTE, type ApiAction } from '../src/domain/types';
+import { InvalidBackupError } from '../src/domain/backup';
 
 const DEFAULT_WORKSPACE_ID = process.env.PVZ_DEFAULT_WORKSPACE_ID?.trim() || 'nick-main';
 
@@ -88,6 +91,18 @@ async function applyAction(workspaceId: string, body: ApiAction) {
     }
 
     await updateLocationName(workspaceId, body.name.trim());
+    return;
+  }
+
+  if (body.action === 'updateEmployeeColor') {
+    if (
+      !body.employeeId ||
+      !EMPLOYEE_COLOR_PALETTE.includes(body.color as (typeof EMPLOYEE_COLOR_PALETTE)[number])
+    ) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await updateEmployeeColor(workspaceId, body.employeeId, body.color);
     return;
   }
 
@@ -172,6 +187,19 @@ async function applyAction(workspaceId: string, body: ApiAction) {
     }
 
     await deletePayment(workspaceId, body.id, body.employeeId);
+    return;
+  }
+
+  if (body.action === 'importState') {
+    try {
+      await importWorkspaceState(workspaceId, body.state);
+    } catch (error) {
+      if (error instanceof InvalidBackupError) {
+        throw new Error('BAD_REQUEST', { cause: error });
+      }
+
+      throw error;
+    }
     return;
   }
 

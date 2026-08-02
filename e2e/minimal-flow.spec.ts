@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { Buffer } from 'node:buffer';
 
 import type { ApiAction, AppState } from '../src/domain/types';
 
@@ -265,6 +266,7 @@ test('invite code connects to the private PVZ workspace', async ({ page }) => {
 });
 
 test('minimal schedule and salary flow renders', async ({ page }) => {
+  test.slow();
   await page.addInitScript((visibleDate) => {
     const fixedNow = `${visibleDate}T12:00:00.000Z`;
     const RealDate = Date;
@@ -422,6 +424,8 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         employees: serverState.employees.filter(
           (employee) => employee.id !== action.employeeId || employee.active,
         ),
+        shifts: serverState.shifts.filter((shift) => shift.employeeId !== action.employeeId),
+        payments: serverState.payments.filter((payment) => payment.employeeId !== action.employeeId),
       };
     }
 
@@ -430,6 +434,19 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         ...serverState,
         location: { ...serverState.location, name: action.name },
       };
+    }
+
+    if (action.action === 'updateEmployeeColor') {
+      serverState = {
+        ...serverState,
+        employees: serverState.employees.map((employee) =>
+          employee.id === action.employeeId ? { ...employee, color: action.color } : employee,
+        ),
+      };
+    }
+
+    if (action.action === 'importState') {
+      serverState = action.state;
     }
 
     await route.fulfill({
@@ -442,7 +459,9 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByText(LOCATION)).toBeVisible();
-  await expect(page.getByText('\u043c\u0430\u0439 2026')).toBeVisible();
+  await expect(page.getByText('\u041c\u0430\u0439 2026')).toBeVisible();
+  await expect(page.getByText('\u0423\u0434\u043e\u0431\u043d\u044b\u0439 \u0442\u0440\u0435\u043a\u0435\u0440 \u0441\u043c\u0435\u043d \u0438 \u0432\u044b\u043f\u043b\u0430\u0442')).toHaveCount(0);
+  await expect(page.getByTestId('day-31').getByText('\u0410', { exact: true })).toBeVisible();
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
   await expect(page.getByTestId('toggle-selected-day-employees')).toBeVisible();
 
@@ -463,6 +482,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('open-day-note').click();
   await page.getByTestId('day-note-comment').fill(DAY_NOTE);
   await page.getByTestId('save-day-note').click();
+  await expect(page.getByTestId('day-note-31')).toBeVisible();
   await page.getByTestId('day-31').click();
   await expect(page.getByTestId('open-day-note').getByText(DAY_NOTE, { exact: true })).toBeVisible();
   await page.getByTestId('close-assignment').click();
@@ -474,9 +494,12 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText(UPDATED_LOCATION)).toBeVisible();
 
   await page.getByTestId('open-payment').click();
+  await page.getByTestId('payment-amount').fill('300');
+  await page.getByTestId('save-payment').click();
+  await expect(page.getByText('\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430.')).toBeVisible();
+  await page.getByTestId(`payment-employee-${ANNA}`).click();
   await page.getByTestId('payment-kind-deduction').click();
   await page.getByTestId('payment-date').fill('30.05.2026');
-  await page.getByTestId('payment-amount').fill('300');
   await page.getByTestId('payment-comment').fill('\u0448\u0442\u0440\u0430\u0444');
   await page.getByTestId('save-payment').click();
 
@@ -519,5 +542,71 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('confirm-delete-employee').click();
 
   await expect(page.getByText(IRA)).toHaveCount(0);
+  await page.getByTestId('dialog-close').first().click();
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
+  await expect(page.getByText('\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u044e', { exact: true })).toHaveCount(0);
+
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByText('\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438', { exact: true })).toBeVisible();
+  await page.getByTestId('employee-color-emp-1-#0e7490').click();
+  await expect.poll(() => serverState.employees.find((employee) => employee.id === 'emp-1')?.color).toBe('#0e7490');
+  await expect(page.getByText('\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u044e', { exact: true })).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const originalCreateObjectUrl = URL.createObjectURL.bind(URL);
+    const originalClick = HTMLAnchorElement.prototype.click;
+    const testWindow = window as typeof window & {
+      __pvzBackupDownload?: { fileName: string; contents: string };
+    };
+
+    URL.createObjectURL = (blob: Blob) => {
+      void blob.text().then((contents) => {
+        testWindow.__pvzBackupDownload = {
+          fileName: testWindow.__pvzBackupDownload?.fileName ?? '',
+          contents,
+        };
+      });
+      return originalCreateObjectUrl(blob);
+    };
+    HTMLAnchorElement.prototype.click = function click() {
+      testWindow.__pvzBackupDownload = {
+        fileName: this.download,
+        contents: testWindow.__pvzBackupDownload?.contents ?? '',
+      };
+      originalClick.call(this);
+    };
+  });
+  await page.getByTestId('export-backup').click();
+  await expect.poll(() => page.evaluate(() => (
+    window as typeof window & { __pvzBackupDownload?: { contents: string } }
+  ).__pvzBackupDownload?.contents.length ?? 0)).toBeGreaterThan(0);
+  const capturedDownload = await page.evaluate(() => (
+    window as typeof window & { __pvzBackupDownload: { fileName: string; contents: string } }
+  ).__pvzBackupDownload);
+  expect(capturedDownload.fileName).toMatch(/^pvz-backup-\d{4}-\d{2}-\d{2}\.json$/);
+  const exported = JSON.parse(capturedDownload.contents) as { format: string; state: AppState };
+  expect(exported.format).toBe('pvz-android-backup');
+  expect(exported.state.location.name).toBe(UPDATED_LOCATION);
+
+  const importedState: AppState = {
+    ...serverState,
+    location: { id: 'main', name: '\u041f\u0412\u0417 \u0438\u0437 \u043a\u043e\u043f\u0438\u0438' },
+  };
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.getByTestId('import-backup').click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({
+    name: 'pvz-backup.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({
+      format: 'pvz-android-backup',
+      version: 1,
+      exportedAt: '2026-06-01T10:30:00.000Z',
+      state: importedState,
+    })),
+  });
+  await expect(page.getByText('\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u043a\u043e\u043f\u0438\u044e?')).toBeVisible();
+  await page.getByTestId('confirm-import-backup').click();
+  await expect(page.getByText('\u0420\u0435\u0437\u0435\u0440\u0432\u043d\u0430\u044f \u043a\u043e\u043f\u0438\u044f \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430. \u041f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0435\u0435 \u0441\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e \u0432 Neon.')).toBeVisible();
+  expect(serverState.location.name).toBe('\u041f\u0412\u0417 \u0438\u0437 \u043a\u043e\u043f\u0438\u0438');
 });

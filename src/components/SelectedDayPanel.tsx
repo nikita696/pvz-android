@@ -11,6 +11,7 @@ import {
 import type { AppState, Employee } from '../domain/types';
 import { appFont, colors } from '../ui/theme';
 import { EmptyState } from './primitives';
+import { EmployeeAvatar } from './EmployeeAvatar';
 
 type SelectedDayPanelProps = {
   activeEmployees: Employee[];
@@ -88,7 +89,7 @@ export function SelectedDayPanel({
                       testID={`toggle-selected-day-employee-${employee.name}`}
                     >
                       <View style={styles.employeeTitleRow}>
-                        <View style={[styles.employeeDot, { backgroundColor: employee.color }]} />
+                        <EmployeeAvatar name={employee.name} color={employee.color} size="medium" />
                         <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
                       </View>
                       <View style={styles.selectedEmployeeMeta}>
@@ -251,11 +252,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  employeeDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 5,
   },
   employeeName: {
     fontFamily: appFont,
