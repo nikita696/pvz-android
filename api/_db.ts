@@ -15,6 +15,21 @@ const DEFAULT_LOCATION = { id: 'main', name: 'Основной пункт' };
 const DEFAULT_WORKSPACE_NAME = 'PVZ workspace';
 
 type Sql = ReturnType<typeof getSql>;
+type EmployeeDeletionSnapshot = {
+  employee: Employee;
+  shifts: Shift[];
+  payments: SalaryPayment[];
+};
+
+export type WorkspaceBackupSummary = {
+  id: string;
+  workspaceId: string;
+  createdAt: string;
+  employees: number;
+  shifts: number;
+  payments: number;
+  dayNotes: number;
+};
 
 export class MissingDatabaseUrlError extends Error {
   constructor() {
@@ -83,6 +98,19 @@ export async function ensureSchema() {
   await sql`
     create index if not exists workspace_backups_workspace_created_idx
     on workspace_backups (workspace_id, created_at desc)
+  `;
+  await sql`
+    create table if not exists employee_deletion_undos (
+      token text primary key,
+      workspace_id text not null references workspaces(id) on delete cascade,
+      snapshot jsonb not null,
+      expires_at timestamptz not null,
+      created_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    create index if not exists employee_deletion_undos_workspace_expires_idx
+    on employee_deletion_undos (workspace_id, expires_at)
   `;
   await sql`
     insert into workspaces (id, name)
@@ -428,15 +456,146 @@ export async function archiveEmployee(workspaceId: string, employeeId: string) {
   `;
 }
 
-export async function deleteArchivedEmployee(workspaceId: string, employeeId: string) {
+export async function deleteArchivedEmployee(workspaceId: string, employeeId: string, undoToken: string) {
   const sql = getSql();
   await ensureSchema();
-  await sql`
+  await sql`delete from employee_deletion_undos where expires_at <= now()`;
+  const deletedRows = await sql`
+    with target_employee as (
+      select id, name, daily_rate, color, active, created_at
+      from employees
+      where id = ${employeeId}
+        and workspace_id = ${workspaceId}
+        and active = false
+      for update
+    ), saved_undo as (
+      insert into employee_deletion_undos (token, workspace_id, snapshot, expires_at)
+      select
+        ${undoToken},
+        ${workspaceId},
+        jsonb_build_object(
+          'employee', jsonb_build_object(
+            'id', employee.id,
+            'name', employee.name,
+            'dailyRate', employee.daily_rate,
+            'color', employee.color,
+            'active', employee.active,
+            'createdAt', employee.created_at
+          ),
+          'shifts', coalesce((
+            select jsonb_agg(jsonb_build_object(
+              'id', shift.id,
+              'employeeId', shift.employee_id,
+              'date', to_char(shift.work_date, 'YYYY-MM-DD')
+            ))
+            from shifts as shift
+            where shift.workspace_id = ${workspaceId}
+              and shift.employee_id = employee.id
+          ), '[]'::jsonb),
+          'payments', coalesce((
+            select jsonb_agg(jsonb_build_object(
+              'id', payment.id,
+              'employeeId', payment.employee_id,
+              'amount', payment.amount,
+              'paidAt', to_char(payment.paid_at, 'YYYY-MM-DD'),
+              'kind', payment.kind,
+              'comment', payment.note
+            ))
+            from salary_payments as payment
+            where payment.workspace_id = ${workspaceId}
+              and payment.employee_id = employee.id
+          ), '[]'::jsonb)
+        ),
+        now() + interval '40 seconds'
+      from target_employee as employee
+      returning token
+    )
     delete from employees
     where id = ${employeeId}
       and workspace_id = ${workspaceId}
-      and active = false
+      and exists (select 1 from saved_undo)
+    returning id
   `;
+
+  if (!deletedRows.length) {
+    throw new Error('BAD_REQUEST');
+  }
+}
+
+export async function restoreDeletedEmployee(workspaceId: string, undoToken: string) {
+  const sql = getSql();
+  await ensureSchema();
+  const rows = await sql`
+    select snapshot
+    from employee_deletion_undos
+    where token = ${undoToken}
+      and workspace_id = ${workspaceId}
+      and expires_at > now()
+    limit 1
+  `;
+  const snapshot = readEmployeeDeletionSnapshot(rows[0]?.snapshot);
+
+  if (!snapshot) {
+    throw new Error('BAD_REQUEST');
+  }
+
+  const shiftsJson = JSON.stringify(snapshot.shifts.map((shift) => ({
+    id: shift.id,
+    employee_id: shift.employeeId,
+    work_date: shift.date,
+  })));
+  const paymentsJson = JSON.stringify(snapshot.payments.map((payment) => ({
+    id: payment.id,
+    employee_id: payment.employeeId,
+    amount: payment.amount,
+    paid_at: payment.paidAt,
+    kind: payment.kind,
+    note: payment.comment,
+  })));
+
+  await sql.transaction((transaction) => [
+    transaction`
+      insert into employees (id, workspace_id, name, daily_rate, color, active, created_at)
+      values (
+        ${snapshot.employee.id},
+        ${workspaceId},
+        ${snapshot.employee.name},
+        ${snapshot.employee.dailyRate},
+        ${snapshot.employee.color},
+        ${snapshot.employee.active},
+        ${snapshot.employee.createdAt}
+      )
+      on conflict (id) do nothing
+    `,
+    transaction`
+      insert into shifts (id, workspace_id, employee_id, work_date)
+      select item.id, ${workspaceId}, item.employee_id, item.work_date
+      from jsonb_to_recordset(cast(${shiftsJson} as jsonb)) as item(
+        id text,
+        employee_id text,
+        work_date date
+      )
+      on conflict do nothing
+    `,
+    transaction`
+      insert into salary_payments (id, workspace_id, employee_id, amount, paid_at, kind, note)
+      select item.id, ${workspaceId}, item.employee_id, item.amount, item.paid_at, item.kind, item.note
+      from jsonb_to_recordset(cast(${paymentsJson} as jsonb)) as item(
+        id text,
+        employee_id text,
+        amount integer,
+        paid_at date,
+        kind text,
+        note text
+      )
+      on conflict do nothing
+    `,
+    transaction`
+      delete from employee_deletion_undos
+      where token = ${undoToken}
+        and workspace_id = ${workspaceId}
+    `,
+  ]);
 }
 
 export async function toggleShift(workspaceId: string, employeeId: string, date: string) {
@@ -543,6 +702,36 @@ export async function deletePayment(workspaceId: string, id: string, employeeId:
   `;
 }
 
+export async function createWorkspaceBackup(workspaceId: string): Promise<WorkspaceBackupSummary> {
+  const state = await getState(workspaceId);
+  const sql = getSql();
+  const id = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+
+  await sql.transaction((transaction) => [
+    transaction`
+      insert into workspace_backups (id, workspace_id, snapshot)
+      values (${id}, ${workspaceId}, cast(${JSON.stringify(state)} as jsonb))
+    `,
+    transaction`
+      delete from workspace_backups
+      where workspace_id = ${workspaceId}
+        and created_at < now() - interval '90 days'
+    `,
+    transaction`delete from employee_deletion_undos where expires_at <= now()`,
+  ]);
+
+  return {
+    id,
+    workspaceId,
+    createdAt,
+    employees: state.employees.length,
+    shifts: state.shifts.length,
+    payments: state.payments.length,
+    dayNotes: state.dayNotes.length,
+  };
+}
+
 export async function importWorkspaceState(workspaceId: string, value: unknown) {
   const nextState = normalizeImportedState(value);
   const sql = getSql();
@@ -632,6 +821,21 @@ export async function importWorkspaceState(workspaceId: string, value: unknown) 
       )
     `,
   ]);
+}
+
+function readEmployeeDeletionSnapshot(value: unknown): EmployeeDeletionSnapshot | null {
+  const snapshot = (typeof value === 'string' ? JSON.parse(value) : value) as Partial<EmployeeDeletionSnapshot> | null;
+
+  if (
+    !snapshot?.employee ||
+    typeof snapshot.employee.id !== 'string' ||
+    !Array.isArray(snapshot.shifts) ||
+    !Array.isArray(snapshot.payments)
+  ) {
+    return null;
+  }
+
+  return snapshot as EmployeeDeletionSnapshot;
 }
 
 async function getNextEmployeeColor(sql: Sql, workspaceId: string) {

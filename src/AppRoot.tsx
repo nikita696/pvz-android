@@ -1,3 +1,4 @@
+import { useNetworkState } from 'expo-network';
 import { StatusBar } from 'expo-status-bar';
 import {
   Archive,
@@ -22,7 +23,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiRequestError, claimInvite, createWorkspace, fetchState, sendAction } from './api';
+import { ApiRequestError, claimInvite, fetchState, sendAction } from './api';
 import { exportWorkspaceBackup, pickWorkspaceBackup } from './backupFile';
 import { CalendarGrid } from './components/CalendarGrid';
 import { EmployeeAvatar } from './components/EmployeeAvatar';
@@ -59,16 +60,13 @@ const MONTH_NAMES = [
   'декабрь',
 ];
 const ONBOARDING_TEXT = {
-  title: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u041f\u0412\u0417',
-  subtitle:
-    '\u0421\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u0433\u0440\u0430\u0444\u0438\u043a \u0438\u043b\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0435\u043c\u0443 \u041f\u0412\u0417 \u043f\u043e \u043a\u043e\u0434\u0443 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.',
-  codeLabel: '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f',
-  codePlaceholder: '\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440, PVZ-1234',
-  codeHint:
-    '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0443 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430 \u041f\u0412\u0417.',
-  claim: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f',
-  create: '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043d\u043e\u0432\u044b\u0439 \u041f\u0412\u0417',
-  missingCode: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.',
+  title: 'Подключите ПВЗ',
+  subtitle: 'Введите код команды, чтобы открыть общий график смен и выплат.',
+  codeLabel: 'Код команды',
+  codePlaceholder: 'Введите код',
+  codeHint: 'Код можно получить у руководителя ПВЗ.',
+  claim: 'Подключиться',
+  missingCode: 'Введите код команды.',
   connected: '\u041f\u0412\u0417 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0451\u043d.',
   loading: '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0430\u0435\u043c \u041f\u0412\u0417',
   saveFailed: '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0442\u043e\u043a\u0435\u043d \u041f\u0412\u0417.',
@@ -92,8 +90,24 @@ type PaymentMonthGroup = {
   payments: SalaryPayment[];
   total: number;
 };
+type EmployeeUndoNotice =
+  | {
+      status: 'pending';
+      token: string;
+      employeeName: string;
+      expiresAt: number;
+    }
+  | {
+      status: 'restored';
+      employeeName: string;
+      expiresAt: number;
+    };
+
+const EMPLOYEE_UNDO_WINDOW_MS = 30_000;
+const UNDO_SUCCESS_VISIBLE_MS = 3_500;
 
 export default function AppRoot() {
+  const networkState = useNetworkState();
   const [state, setState] = useState<AppState>(emptyAppState);
   const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
   const [selectedDate, setSelectedDate] = useState(TODAY);
@@ -101,6 +115,7 @@ export default function AppRoot() {
   const [locationName, setLocationName] = useState('');
   const [employeeName, setEmployeeName] = useState('');
   const [employeeToDeleteId, setEmployeeToDeleteId] = useState('');
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [historyEmployeeId, setHistoryEmployeeId] = useState('');
   const [expandedPaymentMonths, setExpandedPaymentMonths] = useState<Record<string, boolean>>({});
   const [paymentToEditId, setPaymentToEditId] = useState('');
@@ -120,10 +135,14 @@ export default function AppRoot() {
   const [expandedSelectedDayEmployees, setExpandedSelectedDayEmployees] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncFailed, setSyncFailed] = useState(false);
   const [error, setError] = useState('');
   const [settingsError, setSettingsError] = useState('');
   const [settingsMessage, setSettingsMessage] = useState('');
   const [pendingBackup, setPendingBackup] = useState<WorkspaceBackup | null>(null);
+  const [employeeUndoNotice, setEmployeeUndoNotice] = useState<EmployeeUndoNotice | null>(null);
+  const [employeeUndoSeconds, setEmployeeUndoSeconds] = useState(0);
 
   const activeEmployees = useMemo(
     () => state.employees.filter((employee) => employee.active),
@@ -156,7 +175,31 @@ export default function AppRoot() {
     () => state.payments.find((payment) => payment.id === paymentToDeleteId),
     [paymentToDeleteId, state.payments],
   );
+  const employeeToDelete = useMemo(
+    () => state.employees.find((employee) => employee.id === employeeToDeleteId),
+    [employeeToDeleteId, state.employees],
+  );
+  const employeeDeletionShiftCount = useMemo(
+    () => state.shifts.filter((shift) => shift.employeeId === employeeToDeleteId).length,
+    [employeeToDeleteId, state.shifts],
+  );
+  const employeeDeletionPaymentCount = useMemo(
+    () => state.payments.filter((payment) => payment.employeeId === employeeToDeleteId).length,
+    [employeeToDeleteId, state.payments],
+  );
   const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
+  const offline = networkState.isConnected === false || networkState.isInternetReachable === false;
+  const syncLabel = offline
+    ? 'Нет сети'
+    : syncing
+      ? 'Синхронизация…'
+      : syncFailed
+        ? 'Ошибка синхронизации'
+        : 'Данные синхронизированы';
+  const deleteConfirmationMatches = Boolean(
+    employeeToDelete &&
+    deleteConfirmationText.trim().toLocaleLowerCase('ru-RU') === employeeToDelete.name.trim().toLocaleLowerCase('ru-RU'),
+  );
 
   useEffect(() => {
     void bootstrapSession();
@@ -167,8 +210,34 @@ export default function AppRoot() {
     setExpandedSelectedDayEmployees({});
   }, [selectedDate]);
 
+  useEffect(() => {
+    if (!employeeUndoNotice) {
+      setEmployeeUndoSeconds(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remainingMs = employeeUndoNotice.expiresAt - Date.now();
+
+      if (remainingMs <= 0) {
+        setEmployeeUndoNotice(null);
+        setEmployeeUndoSeconds(0);
+        return;
+      }
+
+      if (employeeUndoNotice.status === 'pending') {
+        setEmployeeUndoSeconds(Math.ceil(remainingMs / 1000));
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 250);
+    return () => clearInterval(interval);
+  }, [employeeUndoNotice]);
+
   async function bootstrapSession() {
     setLoading(true);
+    setSyncing(true);
     setError('');
 
     try {
@@ -178,12 +247,14 @@ export default function AppRoot() {
         setSessionToken(null);
         setState(emptyAppState);
         setOnboarding(true);
+        setSyncFailed(false);
         return;
       }
 
       setState(await fetchState(storedToken));
       setSessionToken(storedToken);
       setOnboarding(false);
+      setSyncFailed(false);
     } catch (caught) {
       if (isUnauthorized(caught)) {
         await clearSessionToken();
@@ -194,8 +265,10 @@ export default function AppRoot() {
       }
 
       setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
+      setSyncFailed(true);
     } finally {
       setLoading(false);
+      setSyncing(false);
     }
   }
 
@@ -206,10 +279,12 @@ export default function AppRoot() {
     }
 
     setLoading(true);
+    setSyncing(true);
     setError('');
 
     try {
       setState(await fetchState(sessionToken));
+      setSyncFailed(false);
     } catch (caught) {
       if (isUnauthorized(caught)) {
         await clearSessionToken();
@@ -220,8 +295,10 @@ export default function AppRoot() {
       }
 
       setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
+      setSyncFailed(true);
     } finally {
       setLoading(false);
+      setSyncing(false);
     }
   }
 
@@ -232,10 +309,12 @@ export default function AppRoot() {
     }
 
     setSaving(true);
+    setSyncing(true);
     setError('');
 
     try {
       setState(await sendAction(sessionToken, action));
+      setSyncFailed(false);
       return true;
     } catch (caught) {
       if (isUnauthorized(caught)) {
@@ -247,9 +326,11 @@ export default function AppRoot() {
       }
 
       setError(caught instanceof Error ? caught.message : 'Не удалось сохранить в Neon.');
+      setSyncFailed(true);
       return false;
     } finally {
       setSaving(false);
+      setSyncing(false);
     }
   }
 
@@ -275,29 +356,19 @@ export default function AppRoot() {
     }
 
     setSaving(true);
+    setSyncing(true);
     setError('');
 
     try {
       const payload = await claimInvite(code);
       await openWorkspace(payload.token, payload.state);
+      setSyncFailed(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : ONBOARDING_TEXT.missingCode);
+      setSyncFailed(true);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function createEmptyWorkspace() {
-    setSaving(true);
-    setError('');
-
-    try {
-      const payload = await createWorkspace();
-      await openWorkspace(payload.token, payload.state);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'HTTP_ERROR');
-    } finally {
-      setSaving(false);
+      setSyncing(false);
     }
   }
 
@@ -578,21 +649,52 @@ export default function AppRoot() {
 
   function openDeleteEmployeeDialog(employeeId: string) {
     setEmployeeToDeleteId(employeeId);
+    setDeleteConfirmationText('');
     setDialog('deleteEmployee');
   }
 
   async function deleteArchivedEmployee() {
-    if (!employeeToDeleteId) {
+    if (!employeeToDelete || !deleteConfirmationMatches) {
       return;
     }
 
-    const deleted = await mutate({ action: 'deleteEmployee', employeeId: employeeToDeleteId });
+    const undoToken = createEmployeeUndoToken();
+    const deleted = await mutate({
+      action: 'deleteEmployee',
+      employeeId: employeeToDelete.id,
+      undoToken,
+    });
     if (!deleted) {
       return;
     }
 
+    setEmployeeUndoNotice({
+      status: 'pending',
+      token: undoToken,
+      employeeName: employeeToDelete.name,
+      expiresAt: Date.now() + EMPLOYEE_UNDO_WINDOW_MS,
+    });
     setEmployeeToDeleteId('');
-    setDialog('employees');
+    setDeleteConfirmationText('');
+    setDialog(null);
+  }
+
+  async function undoDeletedEmployee() {
+    if (employeeUndoNotice?.status !== 'pending' || employeeUndoNotice.expiresAt <= Date.now()) {
+      return;
+    }
+
+    const { employeeName, token } = employeeUndoNotice;
+    const restored = await mutate({ action: 'restoreDeletedEmployee', undoToken: token });
+    if (!restored) {
+      return;
+    }
+
+    setEmployeeUndoNotice({
+      status: 'restored',
+      employeeName,
+      expiresAt: Date.now() + UNDO_SUCCESS_VISIBLE_MS,
+    });
   }
 
   const selectedDateLabel = formatDate(selectedDate);
@@ -634,21 +736,13 @@ export default function AppRoot() {
               <Text style={styles.primaryButtonText}>{ONBOARDING_TEXT.claim}</Text>
             </Pressable>
 
-            <Pressable
-              disabled={saving}
-              style={[styles.secondaryButton, saving && styles.disabledButton]}
-              onPress={() => void createEmptyWorkspace()}
-              testID="create-workspace"
-            >
-              <Text style={styles.secondaryButtonText}>{ONBOARDING_TEXT.create}</Text>
-            </Pressable>
           </View>
         </ScrollView>
 
         {saving ? (
           <View style={styles.saving}>
             <ActivityIndicator color={colors.accentText} />
-            <Text style={styles.savingText}>РЎРѕС…СЂР°РЅСЏСЋ</Text>
+            <Text style={styles.savingText}>Сохраняю</Text>
           </View>
         ) : null}
       </SafeAreaView>
@@ -675,6 +769,31 @@ export default function AppRoot() {
                 <PencilLine size={14} color={colors.accentText} />
               </View>
             </Pressable>
+            <View
+              style={[
+                styles.syncStatus,
+                offline && styles.syncStatusOffline,
+                syncFailed && !offline && styles.syncStatusError,
+              ]}
+              testID="sync-status"
+            >
+              <View
+                style={[
+                  styles.syncDot,
+                  offline && styles.syncDotOffline,
+                  syncFailed && !offline && styles.syncDotError,
+                ]}
+              />
+              <Text
+                style={[
+                  styles.syncStatusText,
+                  offline && styles.syncStatusTextOffline,
+                  syncFailed && !offline && styles.syncStatusTextError,
+                ]}
+              >
+                {syncLabel}
+              </Text>
+            </View>
           </View>
           <View style={styles.headerActions}>
             <Pressable
@@ -786,6 +905,33 @@ export default function AppRoot() {
           </View>
         ) : null}
 
+        {employeeUndoNotice ? (
+          <View style={styles.undoBanner} testID="employee-undo-banner">
+            <View style={styles.undoTextContainer}>
+              <Text style={styles.undoTitle}>
+                {employeeUndoNotice.status === 'pending'
+                  ? `${employeeUndoNotice.employeeName} удалён · ${employeeUndoSeconds} с`
+                  : `${employeeUndoNotice.employeeName} возвращён`}
+              </Text>
+              <Text style={styles.undoBody}>
+                {employeeUndoNotice.status === 'pending'
+                  ? 'Смены и выплаты можно вернуть.'
+                  : 'Сотрудник снова находится в архиве.'}
+              </Text>
+            </View>
+            {employeeUndoNotice.status === 'pending' ? (
+              <Pressable
+                disabled={saving}
+                style={[styles.undoButton, saving && styles.disabledButton]}
+                onPress={() => void undoDeletedEmployee()}
+                testID="undo-delete-employee"
+              >
+                <Text style={styles.undoButtonText}>Отменить</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         <Dialog
           visible={dialog === 'assign'}
           title={selectedDateLabel}
@@ -861,7 +1007,12 @@ export default function AppRoot() {
           </Pressable>
         </Dialog>
 
-        <Dialog visible={dialog === 'employees'} title="Сотрудники" onClose={() => setDialog(null)}>
+        <Dialog
+          visible={dialog === 'employees'}
+          title="Сотрудники"
+          closeTestID="close-employees"
+          onClose={() => setDialog(null)}
+        >
           <View style={styles.employeeManagerList}>
             {activeEmployees.length ? (
               activeEmployees.map((employee) => (
@@ -931,13 +1082,32 @@ export default function AppRoot() {
           title="Удалить из базы?"
           onClose={() => {
             setEmployeeToDeleteId('');
+            setDeleteConfirmationText('');
             setDialog('employees');
           }}
         >
           <Text style={styles.warningText}>
-            Сотрудник уже в архиве. Следующий шаг удалит его из базы вместе со сменами и выплатами.
+            Это удалит {employeeToDelete?.name ?? 'сотрудника'} из базы вместе со связанными данными.
           </Text>
-          <Pressable style={styles.dangerButton} onPress={deleteArchivedEmployee} testID="confirm-delete-employee">
+          <View style={styles.deleteImpact}>
+            <Text style={styles.deleteImpactText}>Смен: {employeeDeletionShiftCount}</Text>
+            <Text style={styles.deleteImpactText}>Выплат и удержаний: {employeeDeletionPaymentCount}</Text>
+          </View>
+          <Field
+            label={`Для подтверждения введи имя «${employeeToDelete?.name ?? ''}»`}
+            value={deleteConfirmationText}
+            onChangeText={setDeleteConfirmationText}
+            testID="delete-employee-confirmation"
+          />
+          <Pressable
+            disabled={!deleteConfirmationMatches || saving}
+            style={[
+              styles.dangerButton,
+              (!deleteConfirmationMatches || saving) && styles.disabledButton,
+            ]}
+            onPress={() => void deleteArchivedEmployee()}
+            testID="confirm-delete-employee"
+          >
             <Text style={styles.dangerButtonText}>Удалить навсегда</Text>
           </Pressable>
         </Dialog>
@@ -1444,6 +1614,11 @@ function getValidIsoDate(year: number, month: number, day: number): string | nul
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+function createEmployeeUndoToken(): string {
+  const randomPart = () => Math.random().toString(36).slice(2, 12);
+  return `undo-${Date.now()}-${randomPart()}-${randomPart()}`;
+}
+
 function getPaymentMonthGroups(state: AppState, employeeId: string): PaymentMonthGroup[] {
   const groups = new Map<string, SalaryPayment[]>();
 
@@ -1485,6 +1660,52 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     minWidth: 0,
+    gap: 5,
+  },
+  syncStatus: {
+    alignSelf: 'flex-start',
+    minHeight: 22,
+    borderRadius: 11,
+    paddingHorizontal: 8,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  syncStatusOffline: {
+    backgroundColor: colors.panelSoft,
+    borderColor: colors.borderStrong,
+  },
+  syncStatusError: {
+    backgroundColor: colors.dangerBg,
+    borderColor: colors.dangerBorder,
+  },
+  syncDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accentStrong,
+  },
+  syncDotOffline: {
+    backgroundColor: colors.muted,
+  },
+  syncDotError: {
+    backgroundColor: colors.dangerText,
+  },
+  syncStatusText: {
+    fontFamily: appFont,
+    color: colors.accentStrong,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '800',
+  },
+  syncStatusTextOffline: {
+    color: colors.muted,
+  },
+  syncStatusTextError: {
+    color: colors.dangerText,
   },
   headerActions: {
     flexDirection: 'row',
@@ -1798,6 +2019,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  deleteImpact: {
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    gap: 4,
+  },
+  deleteImpactText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
   dangerButton: {
     minHeight: 50,
     borderRadius: 25,
@@ -1892,6 +2128,59 @@ const styles = StyleSheet.create({
   savingText: {
     fontFamily: appFont,
     color: colors.accentText,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  undoBanner: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 64,
+    minHeight: 64,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    backgroundColor: colors.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    shadowColor: '#111312',
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  undoTextContainer: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  undoTitle: {
+    fontFamily: appFont,
+    color: colors.panel,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '900',
+  },
+  undoBody: {
+    fontFamily: appFont,
+    color: colors.borderStrong,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
+  },
+  undoButton: {
+    minHeight: 38,
+    borderRadius: 19,
+    paddingHorizontal: 13,
+    backgroundColor: colors.accentWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  undoButtonText: {
+    fontFamily: appFont,
+    color: colors.text,
     fontSize: 12,
     fontWeight: '900',
   },
@@ -2081,21 +2370,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     fontFamily: appFont,
     color: colors.accentText,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  secondaryButton: {
-    minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryButtonText: {
-    fontFamily: appFont,
-    color: colors.text,
     fontSize: 14,
     fontWeight: '900',
   },

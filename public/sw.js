@@ -1,6 +1,6 @@
 /* global caches, fetch, self, URL */
 
-const CACHE_NAME = 'pvz-android-shell-v2';
+const CACHE_NAME = 'pvz-android-shell-v3';
 const PRECACHE_ASSETS = ['/manifest.json', '/pwa-icon-192.png', '/pwa-icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -14,15 +14,7 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
-      .then((clients) => {
-        clients.forEach((client) => {
-          if ('navigate' in client) {
-            client.navigate(client.url);
-          }
-        });
-      }),
+      .then(() => self.clients.claim()),
   );
 });
 

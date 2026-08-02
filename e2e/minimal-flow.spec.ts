@@ -12,19 +12,17 @@ const VISIBLE_DATE = '2026-05-31';
 const DAY_NOTE = '\u0437\u0430\u043c\u0435\u043d\u0430';
 const TOKEN_KEY = 'pvz.workspaceToken';
 const TEST_TOKEN = 'test-token';
-const EMPTY_TOKEN = 'empty-token';
 const INVITE_TOKEN = 'invite-token';
 const NICK = '\u041d\u0438\u043a';
 const ONBOARDING_TITLE = '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u041f\u0412\u0417';
 const ONBOARDING_SUBTITLE =
-  '\u0421\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u043d\u043e\u0432\u044b\u0439 \u0433\u0440\u0430\u0444\u0438\u043a \u0438\u043b\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0435\u043c\u0443 \u041f\u0412\u0417 \u043f\u043e \u043a\u043e\u0434\u0443 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.';
-const INVITE_CODE_LABEL = '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f';
-const INVITE_CODE_PLACEHOLDER = '\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440, PVZ-1234';
+  '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u043a\u043e\u043c\u0430\u043d\u0434\u044b, \u0447\u0442\u043e\u0431\u044b \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u043e\u0431\u0449\u0438\u0439 \u0433\u0440\u0430\u0444\u0438\u043a \u0441\u043c\u0435\u043d \u0438 \u0432\u044b\u043f\u043b\u0430\u0442.';
+const INVITE_CODE_LABEL = '\u041a\u043e\u0434 \u043a\u043e\u043c\u0430\u043d\u0434\u044b';
+const INVITE_CODE_PLACEHOLDER = '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434';
 const INVITE_CODE_HINT =
-  '\u041a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0443 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430 \u041f\u0412\u0417.';
+  '\u041a\u043e\u0434 \u043c\u043e\u0436\u043d\u043e \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0443 \u0440\u0443\u043a\u043e\u0432\u043e\u0434\u0438\u0442\u0435\u043b\u044f \u041f\u0412\u0417.';
 const CONNECT_BUTTON = '\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f';
-const CREATE_WORKSPACE_BUTTON = '\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u043d\u043e\u0432\u044b\u0439 \u041f\u0412\u0417';
-const EMPTY_CODE_ERROR = '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044f.';
+const EMPTY_CODE_ERROR = '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043e\u0434 \u043a\u043e\u043c\u0430\u043d\u0434\u044b.';
 const INVALID_CODE_ERROR =
   '\u041a\u043e\u0434 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d \u0438\u043b\u0438 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442.';
 const NETWORK_ERROR =
@@ -53,7 +51,7 @@ test('pwa install metadata and service worker are available', async ({ page, req
   });
 
   await page.goto('/');
-  await expect(page.getByTestId('create-workspace')).toBeVisible();
+  await expect(page.getByText(ONBOARDING_TITLE)).toBeVisible();
 
   const manifestResponse = await request.get('/manifest.json');
   expect(manifestResponse.ok()).toBe(true);
@@ -81,6 +79,7 @@ test('pwa install metadata and service worker are available', async ({ page, req
   });
 
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.json');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#a8d5ba');
   await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', '/pwa-icon-192.png');
@@ -88,7 +87,7 @@ test('pwa install metadata and service worker are available', async ({ page, req
   const serviceWorkerResponse = await request.get('/sw.js');
   expect(serviceWorkerResponse.ok()).toBe(true);
   const serviceWorker = await serviceWorkerResponse.text();
-  expect(serviceWorker).toContain("const CACHE_NAME = 'pvz-android-shell-v2'");
+  expect(serviceWorker).toContain("const CACHE_NAME = 'pvz-android-shell-v3'");
   expect(serviceWorker).toContain("request.mode === 'navigate'");
 
   const registration = await page.evaluate(async () => {
@@ -127,8 +126,7 @@ test('fresh install starts with onboarding and no real workspace data', async ({
   await expect(page.getByTestId('invite-code-input')).toBeVisible();
   await expect(page.getByTestId('invite-code-input')).toHaveAttribute('placeholder', INVITE_CODE_PLACEHOLDER);
   await expect(page.getByText(CONNECT_BUTTON, { exact: true })).toBeVisible();
-  await expect(page.getByText(CREATE_WORKSPACE_BUTTON, { exact: true })).toBeVisible();
-  await expect(page.getByTestId('create-workspace')).toBeVisible();
+  await expect(page.getByTestId('create-workspace')).toHaveCount(0);
   for (const internalCopy of INTERNAL_ONBOARDING_COPY) {
     await expect(page.getByText(internalCopy)).toHaveCount(0);
   }
@@ -165,60 +163,6 @@ test('invite onboarding shows a neutral network error', async ({ page }) => {
   await expect(page.getByText(NETWORK_ERROR)).toBeVisible();
 });
 
-test('creating an empty workspace opens an isolated blank schedule', async ({ page }) => {
-  let serverState: AppState = {
-    location: { id: 'main', name: LOCATION },
-    employees: [],
-    shifts: [],
-    payments: [],
-    dayNotes: [],
-  };
-
-  await page.route('**/api/workspaces', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ token: EMPTY_TOKEN, state: serverState }),
-    });
-  });
-  await page.route('**/api/state', async (route) => {
-    expect(route.request().headers().authorization).toBe(`Bearer ${EMPTY_TOKEN}`);
-    const action = JSON.parse(route.request().postData() ?? '{}') as ApiAction;
-
-    if (action.action === 'addEmployee') {
-      serverState = {
-        ...serverState,
-        employees: [
-          ...serverState.employees,
-          {
-            id: 'emp-empty',
-            name: action.name,
-            dailyRate: action.dailyRate,
-            color: '#a8d5ba',
-            active: true,
-            createdAt: '2026-05-31T00:00:00.000Z',
-          },
-        ],
-      };
-    }
-
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(serverState) });
-  });
-
-  await page.goto('/');
-  await expect(page.getByTestId('create-workspace')).toBeVisible();
-  await page.getByTestId('create-workspace').click();
-  await expect(page.getByText(LOCATION)).toBeVisible();
-  await expect(page.getByText(NICK, { exact: true })).toHaveCount(0);
-
-  await page.getByTestId('open-employees').click();
-  await page.getByTestId('employee-name').fill(IRA);
-  await page.getByTestId('employee-rate').fill('3000');
-  await page.getByTestId('save-employee').click();
-
-  await expect(page.getByText(IRA).first()).toBeVisible();
-});
-
 test('invite code connects to the private PVZ workspace', async ({ page }) => {
   const nickState: AppState = {
     location: { id: 'main', name: LOCATION },
@@ -237,8 +181,14 @@ test('invite code connects to the private PVZ workspace', async ({ page }) => {
     dayNotes: [],
   };
 
+  let finishInviteRequest!: () => void;
+  const inviteRequestCanFinish = new Promise<void>((resolve) => {
+    finishInviteRequest = resolve;
+  });
+
   await page.route('**/api/invites/claim', async (route) => {
     expect(JSON.parse(route.request().postData() ?? '{}')).toEqual({ code: 'PVZ-CODE' });
+    await inviteRequestCanFinish;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -255,6 +205,8 @@ test('invite code connects to the private PVZ workspace', async ({ page }) => {
   await page.getByTestId('invite-code-input').fill('PVZ-CODE');
   await expect(page.getByTestId('invite-code-input')).toHaveValue('PVZ-CODE');
   await page.getByTestId('claim-invite-code').click();
+  await expect(page.getByText('Сохраняю', { exact: true })).toBeVisible();
+  finishInviteRequest();
 
   await expect(page.getByText(LOCATION)).toBeVisible();
   await page.getByTestId('open-employees').click();
@@ -315,6 +267,12 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
     ],
     dayNotes: [],
   };
+  let deletionUndo: {
+    token: string;
+    employee: AppState['employees'][number];
+    shifts: AppState['shifts'];
+    payments: AppState['payments'];
+  } | null = null;
 
   await page.route('**/api/state', async (route) => {
     const request = route.request();
@@ -419,6 +377,19 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
     }
 
     if (action.action === 'deleteEmployee') {
+      const employee = serverState.employees.find(
+        (candidate) => candidate.id === action.employeeId && !candidate.active,
+      );
+
+      if (employee && action.undoToken) {
+        deletionUndo = {
+          token: action.undoToken,
+          employee,
+          shifts: serverState.shifts.filter((shift) => shift.employeeId === action.employeeId),
+          payments: serverState.payments.filter((payment) => payment.employeeId === action.employeeId),
+        };
+      }
+
       serverState = {
         ...serverState,
         employees: serverState.employees.filter(
@@ -427,6 +398,16 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         shifts: serverState.shifts.filter((shift) => shift.employeeId !== action.employeeId),
         payments: serverState.payments.filter((payment) => payment.employeeId !== action.employeeId),
       };
+    }
+
+    if (action.action === 'restoreDeletedEmployee' && deletionUndo?.token === action.undoToken) {
+      serverState = {
+        ...serverState,
+        employees: [...serverState.employees, deletionUndo.employee],
+        shifts: [...serverState.shifts, ...deletionUndo.shifts],
+        payments: [...serverState.payments, ...deletionUndo.payments],
+      };
+      deletionUndo = null;
     }
 
     if (action.action === 'updateLocation') {
@@ -459,6 +440,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByText(LOCATION)).toBeVisible();
+  await expect(page.getByTestId('sync-status')).toContainText('Данные синхронизированы');
   await expect(page.getByText('\u041c\u0430\u0439 2026')).toBeVisible();
   await expect(page.getByText('\u0423\u0434\u043e\u0431\u043d\u044b\u0439 \u0442\u0440\u0435\u043a\u0435\u0440 \u0441\u043c\u0435\u043d \u0438 \u0432\u044b\u043f\u043b\u0430\u0442')).toHaveCount(0);
   await expect(page.getByTestId('day-31').getByText('\u0410', { exact: true })).toBeVisible();
@@ -548,12 +530,28 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('open-employees').click();
   await page.getByTestId(`archive-employee-${IRA}`).click();
   await page.getByTestId(`delete-archived-employee-${IRA}`).click();
+  await expect(page.getByText('Смен: 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('Выплат и удержаний: 0', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('confirm-delete-employee')).toHaveAttribute('aria-disabled', 'true');
+  await page.getByTestId('delete-employee-confirmation').fill(IRA);
+  await expect(page.getByTestId('confirm-delete-employee')).not.toHaveAttribute('aria-disabled', 'true');
   await page.getByTestId('confirm-delete-employee').click();
 
-  await expect(page.getByText(IRA)).toHaveCount(0);
-  await page.getByTestId('dialog-close').first().click();
+  await expect.poll(() => serverState.employees.some((employee) => employee.name === IRA)).toBe(false);
+  await expect(page.getByTestId('employee-undo-banner')).toContainText(`${IRA} удалён · 30 с`);
+  await page.getByTestId('undo-delete-employee').click();
+  await expect.poll(() => serverState.employees.some((employee) => employee.name === IRA)).toBe(true);
+  await expect(page.getByTestId('employee-undo-banner')).toContainText(`${IRA} возвращён`);
+  await page.getByTestId('open-employees').click();
+  await expect(page.getByTestId(`delete-archived-employee-${IRA}`)).toBeVisible();
+  await page.getByTestId('close-employees').click();
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
   await expect(page.getByText('\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u044e', { exact: true })).toHaveCount(0);
+
+  await page.context().setOffline(true);
+  await expect(page.getByTestId('sync-status')).toContainText('Нет сети');
+  await page.context().setOffline(false);
+  await expect(page.getByTestId('sync-status')).toContainText('Данные синхронизированы');
 
   await page.getByTestId('open-settings').click();
   await expect(page.getByText('\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438', { exact: true })).toBeVisible();

@@ -1,0 +1,11 @@
+node_modules
+.expo
+.vercel
+dist
+outputs
+recovery
+test-results
+playwright-report
+opencode.json
+.env*
+!.env.example

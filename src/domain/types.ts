@@ -92,5 +92,6 @@ export type ApiAction =
     }
   | { action: 'deletePayment'; id: string; employeeId: string }
   | { action: 'archiveEmployee'; employeeId: string }
-  | { action: 'deleteEmployee'; employeeId: string }
+  | { action: 'deleteEmployee'; employeeId: string; undoToken?: string }
+  | { action: 'restoreDeletedEmployee'; undoToken: string }
   | { action: 'importState'; state: AppState };

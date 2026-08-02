@@ -50,18 +50,6 @@ export async function sendAction(token: string, action: ApiAction): Promise<AppS
   return response.json() as Promise<AppState>;
 }
 
-export async function createWorkspace(): Promise<WorkspacePayload> {
-  const response = await fetchApi(`${apiBaseUrl}/api/workspaces`, {
-    method: 'POST',
-  });
-
-  if (!response.ok) {
-    throw new ApiRequestError(await getApiError(response), response.status, await getApiCode(response));
-  }
-
-  return response.json() as Promise<WorkspacePayload>;
-}
-
 export async function claimInvite(code: string): Promise<WorkspacePayload> {
   const response = await fetchApi(`${apiBaseUrl}/api/invites/claim`, {
     method: 'POST',
@@ -116,7 +104,7 @@ async function getApiError(response: Response): Promise<string> {
     }
 
     if (payload.error === 'CONFIG_MISSING') {
-      return 'Invite-\u043a\u043e\u0434 \u0435\u0449\u0451 \u043d\u0435 \u0437\u0430\u0434\u0430\u043d \u043d\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435.';
+      return 'Код команды ещё не настроен на сервере.';
     }
 
     return payload.message ?? payload.error ?? `HTTP_${response.status}`;

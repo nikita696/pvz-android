@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "PVZ Android",
-    "slug": "pvz-android",
-    "version": "1.0.1",
+    "slug": "pvz-grafik-i-vyplaty",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -11,7 +11,7 @@
     },
     "android": {
       "package": "ru.nickrimer.pvzandroid",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "android.permission.INTERNET"
       ],
@@ -33,6 +33,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bc7cffa3-73c9-4ec2-8d58-7494b5fad9c2"
+      }
+    },
+    "owner": "nikrimers-organization"
   }
 }
