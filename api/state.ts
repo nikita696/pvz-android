@@ -81,7 +81,7 @@ async function applyAction(workspaceId: string, body: ApiAction) {
       ? color
       : undefined;
 
-    if (!body.name.trim() || !Number.isFinite(body.dailyRate) || body.dailyRate <= 0) {
+    if (!body.name.trim() || !Number.isFinite(body.dailyRate) || body.dailyRate < 0) {
       throw new Error('BAD_REQUEST');
     }
 

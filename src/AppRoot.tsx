@@ -373,10 +373,11 @@ export default function AppRoot() {
   }
 
   async function addEmployee() {
-    const rate = Number(dailyRate);
+    const normalizedRate = dailyRate.trim();
+    const rate = Number(normalizedRate);
 
-    if (!employeeName.trim() || !Number.isFinite(rate) || rate <= 0) {
-      setError('Укажи имя и ставку в день.');
+    if (!employeeName.trim() || !normalizedRate || !Number.isFinite(rate) || rate < 0) {
+      setError('Укажи имя и ставку от 0 ₽ в день.');
       return;
     }
 
@@ -1065,13 +1066,16 @@ export default function AppRoot() {
             </View>
           ) : null}
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
-          <Field
-            label="Ставка в день, ₽"
-            value={dailyRate}
-            onChangeText={setDailyRate}
-            keyboardType="numeric"
-            testID="employee-rate"
-          />
+          <View style={styles.employeeRateField}>
+            <Field
+              label="Ставка в день, ₽"
+              value={dailyRate}
+              onChangeText={setDailyRate}
+              keyboardType="numeric"
+              testID="employee-rate"
+            />
+            <Text style={styles.employeeRateHint}>Для владельца ПВЗ можно указать 0 ₽.</Text>
+          </View>
           <Pressable style={styles.primaryButton} onPress={addEmployee} testID="save-employee">
             <Text style={styles.primaryButtonText}>Добавить</Text>
           </Pressable>
@@ -1791,6 +1795,16 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     lineHeight: 17,
+    fontWeight: '600',
+  },
+  employeeRateField: {
+    gap: 4,
+  },
+  employeeRateHint: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: '600',
   },
   calendarCard: {

@@ -7,6 +7,7 @@ const LOCATION = '\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043f\u0443\
 const UPDATED_LOCATION = '\u041f\u0412\u0417 \u043d\u0430 \u041b\u0435\u0441\u043d\u043e\u0439';
 const ANNA = '\u0410\u043d\u043d\u0430';
 const IRA = '\u0418\u0440\u0430';
+const OWNER = '\u0412\u043b\u0430\u0434\u0435\u043b\u0435\u0446';
 const RUBLE = '\u20bd';
 const VISIBLE_DATE = '2026-05-31';
 const DAY_NOTE = '\u0437\u0430\u043c\u0435\u043d\u0430';
@@ -290,12 +291,13 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
     const action = JSON.parse(request.postData() ?? '{}') as ApiAction;
 
     if (action.action === 'addEmployee') {
+      const employeeId = `emp-${serverState.employees.length + 1}`;
       serverState = {
         ...serverState,
         employees: [
           ...serverState.employees,
           {
-            id: 'emp-2',
+            id: employeeId,
             name: action.name,
             dailyRate: action.dailyRate,
             color: '#f0dd92',
@@ -303,7 +305,9 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
             createdAt: '2026-05-31T00:00:00.000Z',
           },
         ],
-        shifts: [...serverState.shifts, { id: 'shift-2', employeeId: 'emp-2', date: VISIBLE_DATE }],
+        shifts: action.name === IRA
+          ? [...serverState.shifts, { id: 'shift-2', employeeId, date: VISIBLE_DATE }]
+          : serverState.shifts,
       };
     }
 
@@ -540,6 +544,14 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
 
   await expect(page.getByText(IRA).first()).toBeVisible();
   await expect(page.getByText(`5 000 ${RUBLE}`).first()).toBeVisible();
+
+  await page.getByTestId('open-employees').click();
+  await expect(page.getByText(`Для владельца ПВЗ можно указать 0 ${RUBLE}.`, { exact: true })).toBeVisible();
+  await page.getByTestId('employee-name').fill(OWNER);
+  await page.getByTestId('employee-rate').fill('0');
+  await page.getByTestId('save-employee').click();
+  await expect.poll(() => serverState.employees.find((employee) => employee.name === OWNER)?.dailyRate).toBe(0);
+  await expect(page.getByText(OWNER).first()).toBeVisible();
 
   await page.getByTestId('open-employees').click();
   await page.getByTestId(`archive-employee-${IRA}`).click();
