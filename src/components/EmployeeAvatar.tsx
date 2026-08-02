@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { appFont } from '../ui/theme';
+import { appFont, colors } from '../ui/theme';
 
 type EmployeeAvatarProps = {
   name: string;
@@ -11,14 +11,16 @@ type EmployeeAvatarProps = {
 };
 
 const sizes = {
-  tiny: { box: 16, font: 9, line: 11 },
-  small: { box: 24, font: 12, line: 15 },
-  medium: { box: 32, font: 16, line: 19 },
+  tiny: { width: 19, height: 16, radius: 5, font: 10, line: 12 },
+  small: { width: 30, height: 22, radius: 7, font: 12, line: 15 },
+  medium: { width: 38, height: 28, radius: 9, font: 15, line: 18 },
 } as const;
 
 export function EmployeeAvatar({ name, color, size = 'small', muted = false }: EmployeeAvatarProps) {
   const dimensions = sizes[size];
   const initial = name.trim().charAt(0).toLocaleUpperCase('ru-RU') || '?';
+  const backgroundColor = mixWithWhite(color, 0.82);
+  const borderColor = mixWithWhite(color, 0.65);
 
   return (
     <View
@@ -26,11 +28,12 @@ export function EmployeeAvatar({ name, color, size = 'small', muted = false }: E
       style={[
         styles.avatar,
         {
-          width: dimensions.box,
-          height: dimensions.box,
-          borderRadius: dimensions.box / 2,
-          backgroundColor: color,
-          opacity: muted ? 0.45 : 1,
+          width: dimensions.width,
+          height: dimensions.height,
+          borderRadius: dimensions.radius,
+          backgroundColor,
+          borderColor,
+          opacity: muted ? 0.55 : 1,
         },
       ]}
     >
@@ -56,14 +59,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.42)',
   },
   initial: {
     fontFamily: appFont,
-    color: '#FFFFFF',
+    color: colors.text,
     fontWeight: '500',
     textAlign: 'center',
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
 });
+
+function mixWithWhite(color: string, whiteRatio: number) {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+
+  if (!match) {
+    return colors.panelSoft;
+  }
+
+  const value = Number.parseInt(match[1], 16);
+  const colorRatio = 1 - whiteRatio;
+  const red = Math.round(((value >> 16) & 255) * colorRatio + 255 * whiteRatio);
+  const green = Math.round(((value >> 8) & 255) * colorRatio + 255 * whiteRatio);
+  const blue = Math.round((value & 255) * colorRatio + 255 * whiteRatio);
+
+  return `rgb(${red}, ${green}, ${blue})`;
+}

@@ -62,6 +62,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                     styles.dayCell,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
+                    hoveredDay?.date === date && styles.dayCellTooltipOpen,
                   ]}
                   onPress={() => onSelect(date)}
                   onHoverIn={() => {
@@ -103,8 +104,19 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                     </View>
                   ) : null}
                   {hoveredDay?.date === date ? (
-                    <View style={styles.dayTooltip} pointerEvents="none">
-                      <Text style={styles.dayTooltipText} numberOfLines={3}>
+                    <View
+                      style={[
+                        styles.dayTooltip,
+                        dayIndex <= 1
+                          ? styles.dayTooltipLeft
+                          : dayIndex >= 5
+                            ? styles.dayTooltipRight
+                            : styles.dayTooltipCenter,
+                      ]}
+                      pointerEvents="none"
+                      testID={`day-tooltip-${day}`}
+                    >
+                      <Text style={styles.dayTooltipText} numberOfLines={5}>
                         {hoveredDay.label}
                       </Text>
                     </View>
@@ -157,6 +169,10 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     position: 'relative',
     overflow: 'hidden',
+  },
+  dayCellTooltipOpen: {
+    overflow: 'visible',
+    zIndex: 20,
   },
   dayNoteUnderline: {
     position: 'absolute',
@@ -212,20 +228,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     overflow: 'hidden',
-    gap: 4,
+    gap: 1,
   },
   dayTooltip: {
     position: 'absolute',
-    left: -22,
-    right: -22,
     bottom: 42,
-    zIndex: 20,
+    width: 180,
+    zIndex: 30,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 5,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: colors.borderStrong,
+  },
+  dayTooltipLeft: {
+    left: 0,
+  },
+  dayTooltipCenter: {
+    left: '50%',
+    transform: [{ translateX: -90 }],
+  },
+  dayTooltipRight: {
+    right: 0,
   },
   dayTooltipText: {
     fontFamily: appFont,

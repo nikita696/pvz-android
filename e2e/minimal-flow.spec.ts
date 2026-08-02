@@ -483,6 +483,15 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('day-note-comment').fill(DAY_NOTE);
   await page.getByTestId('save-day-note').click();
   await expect(page.getByTestId('day-note-31')).toBeVisible();
+  await page.getByTestId('day-31').hover();
+  const dayTooltip = page.getByTestId('day-tooltip-31');
+  await expect(dayTooltip).toContainText(`Комментарий: ${DAY_NOTE}`);
+  const tooltipBox = await dayTooltip.boundingBox();
+  const viewport = page.viewportSize();
+  expect(tooltipBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(tooltipBox!.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBox!.x + tooltipBox!.width).toBeLessThanOrEqual(viewport!.width);
   await page.getByTestId('day-31').click();
   await expect(page.getByTestId('open-day-note').getByText(DAY_NOTE, { exact: true })).toBeVisible();
   await page.getByTestId('close-assignment').click();
