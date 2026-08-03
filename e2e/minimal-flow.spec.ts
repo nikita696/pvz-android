@@ -465,6 +465,14 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
   await expect(page.getByTestId('toggle-selected-day-employees')).toBeVisible();
 
+  await expect(page.getByText('31.05.2026', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: '\u041f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0438\u0439 \u043c\u0435\u0441\u044f\u0446' }).click();
+  await expect(page.getByText('\u0410\u043f\u0440\u0435\u043b\u044c 2026', { exact: true })).toBeVisible();
+  await expect(page.getByText('01.04.2026', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u043c\u0435\u0441\u044f\u0446' }).click();
+  await expect(page.getByText('\u041c\u0430\u0439 2026', { exact: true })).toBeVisible();
+  await expect(page.getByText('31.05.2026', { exact: true }).first()).toBeVisible();
+
   await page.getByTestId('toggle-selected-day-employees').click();
   await expect(page.getByTestId(`toggle-selected-day-employee-${ANNA}`)).toBeVisible();
   await page.getByTestId(`toggle-selected-day-employee-${ANNA}`).click();

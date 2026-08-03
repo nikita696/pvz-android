@@ -637,6 +637,11 @@ export default function AppRoot() {
     setDialog('assign');
   }
 
+  function changeSelectedMonth(month: string) {
+    setSelectedMonth(month);
+    setSelectedDate(month === CURRENT_MONTH ? TODAY : `${month}-01`);
+  }
+
   async function toggleShiftAndClose(employeeId: string) {
     const saved = await mutate({ action: 'toggleShift', employeeId, date: selectedDate });
     if (saved) {
@@ -842,7 +847,7 @@ export default function AppRoot() {
                   month={selectedMonth}
                   formatMonthLabel={formatMonthLabel}
                   shiftMonth={shiftMonth}
-                  onChange={setSelectedMonth}
+                  onChange={changeSelectedMonth}
                 />
               </View>
               <CalendarGrid
