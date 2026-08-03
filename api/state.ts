@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import {
   MissingDatabaseUrlError,
+  PaymentNotFoundError,
+  PaymentUndoUnavailableError,
   UnauthorizedError,
   addEmployee,
   addPayment,
@@ -12,6 +14,7 @@ import {
   importWorkspaceState,
   requireWorkspaceSession,
   restoreDeletedEmployee,
+  restoreDeletedPayment,
   saveDayNote,
   toggleShift,
   updateLocationName,
@@ -20,6 +23,7 @@ import {
 } from './_db';
 import { EMPLOYEE_COLOR_PALETTE, type ApiAction } from '../src/domain/types';
 import { InvalidBackupError } from '../src/domain/backup';
+import { isPaymentKind, isValidIsoDate, isValidPaymentAmount } from '../src/domain/paymentValidation';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -50,6 +54,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (error instanceof UnauthorizedError) {
       res.status(401).json({ error: 'UNAUTHORIZED' });
+      return;
+    }
+
+    if (error instanceof PaymentNotFoundError) {
+      res.status(409).json({ error: 'PAYMENT_NOT_FOUND' });
+      return;
+    }
+
+    if (error instanceof PaymentUndoUnavailableError) {
+      res.status(409).json({ error: 'PAYMENT_UNDO_UNAVAILABLE' });
       return;
     }
 
@@ -170,14 +184,14 @@ async function applyAction(workspaceId: string, body: ApiAction) {
   }
 
   if (body.action === 'addPayment') {
-    const kind = body.kind === 'deduction' ? 'deduction' : 'payment';
-    const comment = (body.comment ?? '').trim();
+    const kind = body.kind ?? 'payment';
+    const comment = typeof body.comment === 'string' ? body.comment.trim() : '';
 
     if (
       !body.employeeId ||
-      !Number.isFinite(body.amount) ||
-      body.amount <= 0 ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(body.paidAt) ||
+      !isValidPaymentAmount(body.amount) ||
+      !isValidIsoDate(body.paidAt) ||
+      !isPaymentKind(kind) ||
       comment.length > 80
     ) {
       throw new Error('BAD_REQUEST');
@@ -188,15 +202,15 @@ async function applyAction(workspaceId: string, body: ApiAction) {
   }
 
   if (body.action === 'updatePayment') {
-    const kind = body.kind === 'deduction' ? 'deduction' : 'payment';
-    const comment = (body.comment ?? '').trim();
+    const kind = body.kind ?? 'payment';
+    const comment = typeof body.comment === 'string' ? body.comment.trim() : '';
 
     if (
       !body.id ||
       !body.employeeId ||
-      !Number.isFinite(body.amount) ||
-      body.amount <= 0 ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(body.paidAt) ||
+      !isValidPaymentAmount(body.amount) ||
+      !isValidIsoDate(body.paidAt) ||
+      !isPaymentKind(kind) ||
       comment.length > 80
     ) {
       throw new Error('BAD_REQUEST');
@@ -211,7 +225,26 @@ async function applyAction(workspaceId: string, body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await deletePayment(workspaceId, body.id, body.employeeId);
+    const undoToken = typeof body.undoToken === 'string' && body.undoToken.trim()
+      ? body.undoToken.trim()
+      : crypto.randomUUID();
+
+    if (undoToken.length < 12 || undoToken.length > 200) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await deletePayment(workspaceId, body.id, body.employeeId, undoToken);
+    return;
+  }
+
+  if (body.action === 'restoreDeletedPayment') {
+    const undoToken = body.undoToken?.trim();
+
+    if (!undoToken || undoToken.length < 12 || undoToken.length > 200) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await restoreDeletedPayment(workspaceId, undoToken);
     return;
   }
 

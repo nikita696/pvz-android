@@ -87,7 +87,8 @@ export type ApiAction =
       kind?: PaymentKind;
       comment?: string;
     }
-  | { action: 'deletePayment'; id: string; employeeId: string }
+  | { action: 'deletePayment'; id: string; employeeId: string; undoToken?: string }
+  | { action: 'restoreDeletedPayment'; undoToken: string }
   | { action: 'archiveEmployee'; employeeId: string }
   | { action: 'deleteEmployee'; employeeId: string; undoToken?: string }
   | { action: 'restoreDeletedEmployee'; undoToken: string }

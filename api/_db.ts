@@ -20,6 +20,7 @@ type EmployeeDeletionSnapshot = {
   shifts: Shift[];
   payments: SalaryPayment[];
 };
+type PaymentDeletionSnapshot = SalaryPayment;
 
 export type WorkspaceBackupSummary = {
   id: string;
@@ -52,6 +53,18 @@ export class InvalidInviteCodeError extends Error {
 export class ConfigMissingError extends Error {
   constructor() {
     super('CONFIG_MISSING');
+  }
+}
+
+export class PaymentNotFoundError extends Error {
+  constructor() {
+    super('PAYMENT_NOT_FOUND');
+  }
+}
+
+export class PaymentUndoUnavailableError extends Error {
+  constructor() {
+    super('PAYMENT_UNDO_UNAVAILABLE');
   }
 }
 
@@ -111,6 +124,19 @@ export async function ensureSchema() {
   await sql`
     create index if not exists employee_deletion_undos_workspace_expires_idx
     on employee_deletion_undos (workspace_id, expires_at)
+  `;
+  await sql`
+    create table if not exists payment_deletion_undos (
+      token text primary key,
+      workspace_id text not null references workspaces(id) on delete cascade,
+      snapshot jsonb not null,
+      expires_at timestamptz not null,
+      created_at timestamptz not null default now()
+    )
+  `;
+  await sql`
+    create index if not exists payment_deletion_undos_workspace_expires_idx
+    on payment_deletion_undos (workspace_id, expires_at)
   `;
   await sql`
     insert into workspaces (id, name)
@@ -663,7 +689,7 @@ export async function addPayment(
   await requireEmployee(sql, workspaceId, employeeId);
   await sql`
     insert into salary_payments (id, workspace_id, employee_id, amount, paid_at, kind, note)
-    values (${crypto.randomUUID()}, ${workspaceId}, ${employeeId}, ${Math.round(amount)}, ${paidAt}, ${kind}, ${comment})
+    values (${crypto.randomUUID()}, ${workspaceId}, ${employeeId}, ${amount}, ${paidAt}, ${kind}, ${comment})
   `;
 }
 
@@ -679,27 +705,108 @@ export async function updatePayment(
   const sql = getSql();
   await ensureSchema();
   await requireEmployee(sql, workspaceId, employeeId);
-  await sql`
+  const rows = await sql`
     update salary_payments
-    set amount = ${Math.round(amount)},
+    set amount = ${amount},
         paid_at = ${paidAt},
         kind = ${kind},
         note = ${comment}
     where id = ${id}
       and employee_id = ${employeeId}
       and workspace_id = ${workspaceId}
+    returning id
   `;
+
+  if (!rows.length) {
+    throw new PaymentNotFoundError();
+  }
 }
 
-export async function deletePayment(workspaceId: string, id: string, employeeId: string) {
+export async function deletePayment(
+  workspaceId: string,
+  id: string,
+  employeeId: string,
+  undoToken: string,
+) {
   const sql = getSql();
   await ensureSchema();
-  await sql`
+  await sql`delete from payment_deletion_undos where expires_at <= now()`;
+  const rows = await sql`
+    with target_payment as (
+      select id, employee_id, amount, paid_at, kind, note
+      from salary_payments
+      where id = ${id}
+        and employee_id = ${employeeId}
+        and workspace_id = ${workspaceId}
+      for update
+    ), saved_undo as (
+      insert into payment_deletion_undos (token, workspace_id, snapshot, expires_at)
+      select
+        ${undoToken},
+        ${workspaceId},
+        jsonb_build_object(
+          'id', payment.id,
+          'employeeId', payment.employee_id,
+          'amount', payment.amount,
+          'paidAt', to_char(payment.paid_at, 'YYYY-MM-DD'),
+          'kind', payment.kind,
+          'comment', payment.note
+        ),
+        now() + interval '40 seconds'
+      from target_payment as payment
+      returning token
+    )
     delete from salary_payments
     where id = ${id}
       and employee_id = ${employeeId}
       and workspace_id = ${workspaceId}
+      and exists (select 1 from saved_undo)
+    returning id
   `;
+
+  if (!rows.length) {
+    throw new PaymentNotFoundError();
+  }
+}
+
+export async function restoreDeletedPayment(workspaceId: string, undoToken: string) {
+  const sql = getSql();
+  await ensureSchema();
+  const rows = await sql`
+    select snapshot
+    from payment_deletion_undos
+    where token = ${undoToken}
+      and workspace_id = ${workspaceId}
+      and expires_at > now()
+    limit 1
+  `;
+  const payment = readPaymentDeletionSnapshot(rows[0]?.snapshot);
+
+  if (!payment) {
+    throw new PaymentUndoUnavailableError();
+  }
+
+  await requireEmployee(sql, workspaceId, payment.employeeId);
+  await sql.transaction((transaction) => [
+    transaction`
+      insert into salary_payments (id, workspace_id, employee_id, amount, paid_at, kind, note)
+      values (
+        ${payment.id},
+        ${workspaceId},
+        ${payment.employeeId},
+        ${payment.amount},
+        ${payment.paidAt},
+        ${payment.kind},
+        ${payment.comment}
+      )
+      on conflict (id) do nothing
+    `,
+    transaction`
+      delete from payment_deletion_undos
+      where token = ${undoToken}
+        and workspace_id = ${workspaceId}
+    `,
+  ]);
 }
 
 export async function createWorkspaceBackup(workspaceId: string): Promise<WorkspaceBackupSummary> {
@@ -719,6 +826,7 @@ export async function createWorkspaceBackup(workspaceId: string): Promise<Worksp
         and created_at < now() - interval '90 days'
     `,
     transaction`delete from employee_deletion_undos where expires_at <= now()`,
+    transaction`delete from payment_deletion_undos where expires_at <= now()`,
   ]);
 
   return {
@@ -836,6 +944,24 @@ function readEmployeeDeletionSnapshot(value: unknown): EmployeeDeletionSnapshot 
   }
 
   return snapshot as EmployeeDeletionSnapshot;
+}
+
+function readPaymentDeletionSnapshot(value: unknown): PaymentDeletionSnapshot | null {
+  const snapshot = (typeof value === 'string' ? JSON.parse(value) : value) as Partial<SalaryPayment> | null;
+
+  if (
+    !snapshot ||
+    typeof snapshot.id !== 'string' ||
+    typeof snapshot.employeeId !== 'string' ||
+    typeof snapshot.amount !== 'number' ||
+    typeof snapshot.paidAt !== 'string' ||
+    (snapshot.kind !== 'payment' && snapshot.kind !== 'deduction') ||
+    typeof snapshot.comment !== 'string'
+  ) {
+    return null;
+  }
+
+  return snapshot as SalaryPayment;
 }
 
 async function getNextEmployeeColor(sql: Sql, workspaceId: string) {

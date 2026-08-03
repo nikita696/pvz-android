@@ -274,6 +274,11 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
     shifts: AppState['shifts'];
     payments: AppState['payments'];
   } | null = null;
+  let paymentDeletionUndo: {
+    token: string;
+    payment: AppState['payments'][number];
+  } | null = null;
+  let addPaymentRequestCount = 0;
 
   await page.route('**/api/state', async (route) => {
     const request = route.request();
@@ -312,6 +317,7 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
     }
 
     if (action.action === 'addPayment') {
+      addPaymentRequestCount += 1;
       serverState = {
         ...serverState,
         payments: [
@@ -363,6 +369,14 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
     }
 
     if (action.action === 'deletePayment') {
+      const payment = serverState.payments.find(
+        (candidate) => candidate.id === action.id && candidate.employeeId === action.employeeId,
+      );
+
+      if (payment && action.undoToken) {
+        paymentDeletionUndo = { token: action.undoToken, payment };
+      }
+
       serverState = {
         ...serverState,
         payments: serverState.payments.filter(
@@ -402,6 +416,17 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         shifts: serverState.shifts.filter((shift) => shift.employeeId !== action.employeeId),
         payments: serverState.payments.filter((payment) => payment.employeeId !== action.employeeId),
       };
+    }
+
+    if (
+      action.action === 'restoreDeletedPayment' &&
+      paymentDeletionUndo?.token === action.undoToken
+    ) {
+      serverState = {
+        ...serverState,
+        payments: [...serverState.payments, paymentDeletionUndo.payment],
+      };
+      paymentDeletionUndo = null;
     }
 
     if (action.action === 'restoreDeletedEmployee' && deletionUndo?.token === action.undoToken) {
@@ -518,8 +543,9 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('payment-kind-deduction').click();
   await page.getByTestId('payment-date').fill('30.05.2026');
   await page.getByTestId('payment-comment').fill('\u0448\u0442\u0440\u0430\u0444');
-  await page.getByTestId('save-payment').click();
+  await page.getByTestId('save-payment').dblclick();
 
+  await expect.poll(() => addPaymentRequestCount).toBe(1);
   await expect(page.getByText(`1 700 ${RUBLE}`).first()).toBeVisible();
   await expect(page.getByText(`\u0423\u0434\u0435\u0440\u0436\u0430\u043d\u043e 300 ${RUBLE}`)).toBeVisible();
 
@@ -529,6 +555,9 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText('\u0448\u0442\u0440\u0430\u0444', { exact: true })).toBeVisible();
   await page.getByTestId('edit-payment-pay-new').click();
   await page.getByTestId('edit-payment-date').fill('29.05.2026');
+  await page.getByTestId('edit-payment-amount').fill('0');
+  await page.getByTestId('save-edit-payment').click();
+  await expect(page.getByText('Укажи положительную сумму целыми рублями.', { exact: true })).toBeVisible();
   await page.getByTestId('edit-payment-amount').fill('200');
   await page.getByTestId('edit-payment-comment').fill('\u0448\u0442\u0440\u0430\u0444 \u0438\u0441\u043f\u0440.');
   await page.getByTestId('save-edit-payment').click();
@@ -537,7 +566,16 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText('\u0448\u0442\u0440\u0430\u0444 \u0438\u0441\u043f\u0440.')).toBeVisible();
   await page.getByTestId('delete-payment-pay-new').click();
   await page.getByTestId('confirm-delete-payment').click();
-  await page.getByTestId('close-payment-history').click();
+
+  await expect(page.getByTestId('payment-undo-banner')).toContainText('Запись на 200 ₽ удалена · 30 с');
+  await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
+  await page.getByTestId('undo-delete-payment').click();
+  await expect(page.getByTestId('payment-undo-banner')).toContainText('Запись на 200 ₽ возвращена');
+  await expect(page.getByText(`1 800 ${RUBLE}`).first()).toBeVisible();
+
+  await page.getByTestId(`open-payment-history-${ANNA}`).click();
+  await page.getByTestId('delete-payment-pay-new').click();
+  await page.getByTestId('confirm-delete-payment').click();
 
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
 

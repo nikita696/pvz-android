@@ -107,6 +107,18 @@ async function getApiError(response: Response): Promise<string> {
       return 'Код команды ещё не настроен на сервере.';
     }
 
+    if (payload.error === 'PAYMENT_NOT_FOUND') {
+      return 'Эта запись уже изменена или удалена на другом устройстве. Обнови данные и попробуй ещё раз.';
+    }
+
+    if (payload.error === 'PAYMENT_UNDO_UNAVAILABLE') {
+      return 'Время отмены истекло или запись уже была восстановлена.';
+    }
+
+    if (payload.error === 'BAD_REQUEST') {
+      return 'Проверь сумму, дату и тип выплаты.';
+    }
+
     return payload.message ?? payload.error ?? `HTTP_${response.status}`;
   } catch {
     return `HTTP_${response.status}`;

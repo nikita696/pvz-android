@@ -11,7 +11,7 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react-native';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -41,6 +41,7 @@ import {
   hasShift,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
+import { isValidPaymentAmount } from './domain/paymentValidation';
 import type { ApiAction, AppState, Employee, PaymentKind, SalaryPayment } from './domain/types';
 import { clearSessionToken, getStoredSessionToken, saveSessionToken } from './sessionToken';
 import { appFont, colors } from './ui/theme';
@@ -102,8 +103,22 @@ type EmployeeUndoNotice =
       employeeName: string;
       expiresAt: number;
     };
+type PaymentUndoNotice =
+  | {
+      status: 'pending';
+      token: string;
+      kind: PaymentKind;
+      amount: number;
+      expiresAt: number;
+    }
+  | {
+      status: 'restored';
+      kind: PaymentKind;
+      amount: number;
+      expiresAt: number;
+    };
 
-const EMPLOYEE_UNDO_WINDOW_MS = 30_000;
+const UNDO_WINDOW_MS = 30_000;
 const UNDO_SUCCESS_VISIBLE_MS = 3_500;
 
 export default function AppRoot() {
@@ -135,6 +150,7 @@ export default function AppRoot() {
   const [expandedSelectedDayEmployees, setExpandedSelectedDayEmployees] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
   const [error, setError] = useState('');
@@ -143,6 +159,8 @@ export default function AppRoot() {
   const [pendingBackup, setPendingBackup] = useState<WorkspaceBackup | null>(null);
   const [employeeUndoNotice, setEmployeeUndoNotice] = useState<EmployeeUndoNotice | null>(null);
   const [employeeUndoSeconds, setEmployeeUndoSeconds] = useState(0);
+  const [paymentUndoNotice, setPaymentUndoNotice] = useState<PaymentUndoNotice | null>(null);
+  const [paymentUndoSeconds, setPaymentUndoSeconds] = useState(0);
 
   const activeEmployees = useMemo(
     () => state.employees.filter((employee) => employee.active),
@@ -235,6 +253,31 @@ export default function AppRoot() {
     return () => clearInterval(interval);
   }, [employeeUndoNotice]);
 
+  useEffect(() => {
+    if (!paymentUndoNotice) {
+      setPaymentUndoSeconds(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remainingMs = paymentUndoNotice.expiresAt - Date.now();
+
+      if (remainingMs <= 0) {
+        setPaymentUndoNotice(null);
+        setPaymentUndoSeconds(0);
+        return;
+      }
+
+      if (paymentUndoNotice.status === 'pending') {
+        setPaymentUndoSeconds(Math.ceil(remainingMs / 1000));
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 250);
+    return () => clearInterval(interval);
+  }, [paymentUndoNotice]);
+
   async function bootstrapSession() {
     setLoading(true);
     setSyncing(true);
@@ -302,15 +345,21 @@ export default function AppRoot() {
     }
   }
 
-  async function mutate(action: ApiAction): Promise<boolean> {
+  async function mutate(action: ApiAction, setLocalError?: (message: string) => void): Promise<boolean> {
     if (!sessionToken) {
       setOnboarding(true);
       return false;
     }
 
+    if (savingRef.current) {
+      return false;
+    }
+
+    savingRef.current = true;
     setSaving(true);
     setSyncing(true);
     setError('');
+    setLocalError?.('');
 
     try {
       setState(await sendAction(sessionToken, action));
@@ -325,10 +374,19 @@ export default function AppRoot() {
         return false;
       }
 
-      setError(caught instanceof Error ? caught.message : 'Не удалось сохранить в Neon.');
-      setSyncFailed(true);
+      const message = caught instanceof Error ? caught.message : 'Не удалось сохранить в Neon.';
+
+      if (setLocalError) {
+        setLocalError(message);
+      } else {
+        setError(message);
+      }
+      setSyncFailed(
+        !(caught instanceof ApiRequestError) || caught.status === 0 || caught.status >= 500,
+      );
       return false;
     } finally {
+      savingRef.current = false;
       setSaving(false);
       setSyncing(false);
     }
@@ -419,8 +477,8 @@ export default function AppRoot() {
       return;
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setPaymentError('Укажите сумму выплаты.');
+    if (!isValidPaymentAmount(amount)) {
+      setPaymentError('Укажите положительную сумму целыми рублями.');
       return;
     }
 
@@ -429,14 +487,17 @@ export default function AppRoot() {
       return;
     }
 
-    const saved = await mutate({
-      action: 'addPayment',
-      employeeId: paymentEmployeeId,
-      amount,
-      paidAt,
-      kind: paymentKind,
-      comment: paymentComment.trim(),
-    });
+    const saved = await mutate(
+      {
+        action: 'addPayment',
+        employeeId: paymentEmployeeId,
+        amount,
+        paidAt,
+        kind: paymentKind,
+        comment: paymentComment.trim(),
+      },
+      setPaymentError,
+    );
     if (!saved) {
       return;
     }
@@ -499,11 +560,13 @@ export default function AppRoot() {
     setPaymentAmount(String(payment.amount));
     setPaymentComment(payment.comment);
     setPaymentDateText(formatDate(payment.paidAt));
+    setPaymentError('');
     setDialog('editPayment');
   }
 
   function openDeletePayment(payment: SalaryPayment) {
     setPaymentToDeleteId(payment.id);
+    setPaymentError('');
     setDialog('deletePayment');
   }
 
@@ -511,25 +574,28 @@ export default function AppRoot() {
     const amount = Number(paymentAmount);
     const paidAt = parseDateInput(paymentDateText);
 
-    if (!paymentToEdit || !Number.isFinite(amount) || amount <= 0) {
-      setError('Укажи сумму выплаты.');
+    if (!paymentToEdit || !isValidPaymentAmount(amount)) {
+      setPaymentError('Укажи положительную сумму целыми рублями.');
       return;
     }
 
     if (!paidAt) {
-      setError('Укажи дату в формате ДД.ММ.ГГГГ.');
+      setPaymentError('Укажи существующую дату в формате ДД.ММ.ГГГГ.');
       return;
     }
 
-    const saved = await mutate({
-      action: 'updatePayment',
-      id: paymentToEdit.id,
-      employeeId: paymentToEdit.employeeId,
-      amount,
-      paidAt,
-      kind: paymentKind,
-      comment: paymentComment.trim(),
-    });
+    const saved = await mutate(
+      {
+        action: 'updatePayment',
+        id: paymentToEdit.id,
+        employeeId: paymentToEdit.employeeId,
+        amount,
+        paidAt,
+        kind: paymentKind,
+        comment: paymentComment.trim(),
+      },
+      setPaymentError,
+    );
     if (!saved) {
       return;
     }
@@ -543,17 +609,51 @@ export default function AppRoot() {
       return;
     }
 
-    const deleted = await mutate({
-      action: 'deletePayment',
-      id: paymentToDelete.id,
-      employeeId: paymentToDelete.employeeId,
-    });
+    const deletedPayment = paymentToDelete;
+    const undoToken = createUndoToken();
+    const deleted = await mutate(
+      {
+        action: 'deletePayment',
+        id: deletedPayment.id,
+        employeeId: deletedPayment.employeeId,
+        undoToken,
+      },
+      setPaymentError,
+    );
     if (!deleted) {
       return;
     }
 
+    setPaymentUndoNotice({
+      status: 'pending',
+      token: undoToken,
+      kind: deletedPayment.kind,
+      amount: deletedPayment.amount,
+      expiresAt: Date.now() + UNDO_WINDOW_MS,
+    });
+    setEmployeeUndoNotice(null);
     setPaymentToDeleteId('');
-    setDialog('employeePayments');
+    setHistoryEmployeeId('');
+    setDialog(null);
+  }
+
+  async function undoDeletedPayment() {
+    if (paymentUndoNotice?.status !== 'pending' || paymentUndoNotice.expiresAt <= Date.now()) {
+      return;
+    }
+
+    const { amount, kind, token } = paymentUndoNotice;
+    const restored = await mutate({ action: 'restoreDeletedPayment', undoToken: token });
+    if (!restored) {
+      return;
+    }
+
+    setPaymentUndoNotice({
+      status: 'restored',
+      kind,
+      amount,
+      expiresAt: Date.now() + UNDO_SUCCESS_VISIBLE_MS,
+    });
   }
 
   function resetPaymentForm() {
@@ -664,7 +764,7 @@ export default function AppRoot() {
       return;
     }
 
-    const undoToken = createEmployeeUndoToken();
+    const undoToken = createUndoToken();
     const deleted = await mutate({
       action: 'deleteEmployee',
       employeeId: employeeToDelete.id,
@@ -678,8 +778,9 @@ export default function AppRoot() {
       status: 'pending',
       token: undoToken,
       employeeName: employeeToDelete.name,
-      expiresAt: Date.now() + EMPLOYEE_UNDO_WINDOW_MS,
+      expiresAt: Date.now() + UNDO_WINDOW_MS,
     });
+    setPaymentUndoNotice(null);
     setEmployeeToDeleteId('');
     setDeleteConfirmationText('');
     setDialog(null);
@@ -938,6 +1039,35 @@ export default function AppRoot() {
           </View>
         ) : null}
 
+        {paymentUndoNotice ? (
+          <View style={styles.undoBanner} testID="payment-undo-banner">
+            <View style={styles.undoTextContainer}>
+              <Text style={styles.undoTitle}>
+                {paymentUndoNotice.status === 'pending'
+                  ? `Запись на ${formatMoney(paymentUndoNotice.amount)} удалена · ${paymentUndoSeconds} с`
+                  : `Запись на ${formatMoney(paymentUndoNotice.amount)} возвращена`}
+              </Text>
+              <Text style={styles.undoBody}>
+                {paymentUndoNotice.status === 'pending'
+                  ? 'Выплату или удержание можно вернуть.'
+                  : paymentUndoNotice.kind === 'deduction'
+                    ? 'Удержание снова учитывается в расчёте.'
+                    : 'Выплата снова учитывается в расчёте.'}
+              </Text>
+            </View>
+            {paymentUndoNotice.status === 'pending' ? (
+              <Pressable
+                disabled={saving}
+                style={[styles.undoButton, saving && styles.disabledButton]}
+                onPress={() => void undoDeletedPayment()}
+                testID="undo-delete-payment"
+              >
+                <Text style={styles.undoButtonText}>Отменить</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         <Dialog
           visible={dialog === 'assign'}
           title={selectedDateLabel}
@@ -1158,7 +1288,10 @@ export default function AppRoot() {
           <View style={styles.paymentTypeRow}>
             <Pressable
               style={[styles.paymentTypeButton, paymentKind === 'payment' && styles.paymentTypeButtonActive]}
-              onPress={() => setPaymentKind('payment')}
+              onPress={() => {
+                setPaymentKind('payment');
+                setPaymentError('');
+              }}
               testID="payment-kind-payment"
             >
               <Text
@@ -1172,7 +1305,10 @@ export default function AppRoot() {
             </Pressable>
             <Pressable
               style={[styles.paymentTypeButton, paymentKind === 'deduction' && styles.paymentTypeButtonDanger]}
-              onPress={() => setPaymentKind('deduction')}
+              onPress={() => {
+                setPaymentKind('deduction');
+                setPaymentError('');
+              }}
               testID="payment-kind-deduction"
             >
               <Text
@@ -1188,26 +1324,40 @@ export default function AppRoot() {
           <Field
             label="Дата, ДД.ММ.ГГГГ"
             value={paymentDateText}
-            onChangeText={setPaymentDateText}
+            onChangeText={(value) => {
+              setPaymentDateText(value);
+              setPaymentError('');
+            }}
             placeholder="26.05.2026"
             testID="payment-date"
           />
           <Field
             label="Сумма, ₽"
             value={paymentAmount}
-            onChangeText={setPaymentAmount}
+            onChangeText={(value) => {
+              setPaymentAmount(value);
+              setPaymentError('');
+            }}
             keyboardType="numeric"
             testID="payment-amount"
           />
           <Field
             label="Комментарий"
             value={paymentComment}
-            onChangeText={setPaymentComment}
+            onChangeText={(value) => {
+              setPaymentComment(value);
+              setPaymentError('');
+            }}
             placeholder={paymentKind === 'deduction' ? 'штраф, удержание' : 'нал, СБП, аванс, зарплата'}
             maxLength={80}
             testID="payment-comment"
           />
-          <Pressable style={styles.primaryButton} onPress={addPayment} testID="save-payment">
+          <Pressable
+            disabled={saving}
+            style={[styles.primaryButton, saving && styles.disabledButton]}
+            onPress={() => void addPayment()}
+            testID="save-payment"
+          >
             <Text style={styles.primaryButtonText}>
               {paymentKind === 'deduction' ? 'Сохранить удержание' : 'Сохранить выплату'}
             </Text>
@@ -1294,10 +1444,14 @@ export default function AppRoot() {
             <Text style={styles.fieldLabel}>Сотрудник</Text>
             <Text style={styles.employeeName}>{historyEmployee?.name ?? 'Сотрудник'}</Text>
           </View>
+          {paymentError ? <Notice text={paymentError} /> : null}
           <View style={styles.paymentTypeRow}>
             <Pressable
               style={[styles.paymentTypeButton, paymentKind === 'payment' && styles.paymentTypeButtonActive]}
-              onPress={() => setPaymentKind('payment')}
+              onPress={() => {
+                setPaymentKind('payment');
+                setPaymentError('');
+              }}
               testID="edit-payment-kind-payment"
             >
               <Text
@@ -1311,7 +1465,10 @@ export default function AppRoot() {
             </Pressable>
             <Pressable
               style={[styles.paymentTypeButton, paymentKind === 'deduction' && styles.paymentTypeButtonDanger]}
-              onPress={() => setPaymentKind('deduction')}
+              onPress={() => {
+                setPaymentKind('deduction');
+                setPaymentError('');
+              }}
               testID="edit-payment-kind-deduction"
             >
               <Text
@@ -1327,26 +1484,40 @@ export default function AppRoot() {
           <Field
             label="Дата, ДД.ММ.ГГГГ"
             value={paymentDateText}
-            onChangeText={setPaymentDateText}
+            onChangeText={(value) => {
+              setPaymentDateText(value);
+              setPaymentError('');
+            }}
             placeholder="26.05.2026"
             testID="edit-payment-date"
           />
           <Field
             label="Сумма, ₽"
             value={paymentAmount}
-            onChangeText={setPaymentAmount}
+            onChangeText={(value) => {
+              setPaymentAmount(value);
+              setPaymentError('');
+            }}
             keyboardType="numeric"
             testID="edit-payment-amount"
           />
           <Field
             label="Комментарий"
             value={paymentComment}
-            onChangeText={setPaymentComment}
+            onChangeText={(value) => {
+              setPaymentComment(value);
+              setPaymentError('');
+            }}
             placeholder={paymentKind === 'deduction' ? 'штраф, удержание' : 'нал, СБП, аванс, зарплата'}
             maxLength={80}
             testID="edit-payment-comment"
           />
-          <Pressable style={styles.primaryButton} onPress={updateSelectedPayment} testID="save-edit-payment">
+          <Pressable
+            disabled={saving}
+            style={[styles.primaryButton, saving && styles.disabledButton]}
+            onPress={() => void updateSelectedPayment()}
+            testID="save-edit-payment"
+          >
             <Text style={styles.primaryButtonText}>Сохранить изменения</Text>
           </Pressable>
         </Dialog>
@@ -1363,6 +1534,7 @@ export default function AppRoot() {
           <Text style={styles.warningText}>
             Это удалит только выбранную выплату или удержание. Смены и сотрудники останутся на месте.
           </Text>
+          {paymentError ? <Notice text={paymentError} /> : null}
           {paymentToDelete ? (
             <View style={styles.deletePaymentPreview}>
               <Text style={styles.historyDate}>{formatDate(paymentToDelete.paidAt)}</Text>
@@ -1381,7 +1553,12 @@ export default function AppRoot() {
               ) : null}
             </View>
           ) : null}
-          <Pressable style={styles.dangerButton} onPress={deleteSelectedPayment} testID="confirm-delete-payment">
+          <Pressable
+            disabled={saving}
+            style={[styles.dangerButton, saving && styles.disabledButton]}
+            onPress={() => void deleteSelectedPayment()}
+            testID="confirm-delete-payment"
+          >
             <Text style={styles.dangerButtonText}>Удалить запись</Text>
           </Pressable>
         </Dialog>
@@ -1623,7 +1800,7 @@ function getValidIsoDate(year: number, month: number, day: number): string | nul
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function createEmployeeUndoToken(): string {
+function createUndoToken(): string {
   const randomPart = () => Math.random().toString(36).slice(2, 12);
   return `undo-${Date.now()}-${randomPart()}-${randomPart()}`;
 }
