@@ -17,10 +17,12 @@ const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 type CalendarGridProps = {
   month: string;
   state: AppState;
+  selectedDate?: string;
+  today?: string;
   onSelect: (date: string) => void;
 };
 
-export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
+export function CalendarGrid({ month, state, selectedDate, today: todayDate = TODAY, onSelect }: CalendarGridProps) {
   const days = getCalendarDays(month);
   const weeks = chunkWeeks(days);
   const [hoveredDay, setHoveredDay] = useState<{ date: string; label: string } | null>(null);
@@ -43,7 +45,8 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
               }
 
               const date = `${month}-${String(day).padStart(2, '0')}`;
-              const today = date === TODAY;
+              const today = date === todayDate;
+              const selected = date === selectedDate;
               const employeesOnShift = getShiftEmployeesByDate(state, date);
               const dayOff = getDayOffInfo(date);
               const dayNote = state.dayNotes.find((note) => note.date === date && note.comment.trim());
@@ -58,11 +61,24 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
               return (
                 <Pressable
                   key={date}
-                  style={[
+                  accessibilityRole="button"
+                  accessibilityLabel={createDayAccessibilityLabel({
+                    date,
+                    today,
+                    selected,
+                    employeeNames: employeesOnShift.map((employee) => employee.name),
+                    dayOffLabel: dayOff?.label,
+                    comment: dayNote?.comment,
+                  })}
+                  accessibilityHint="Открывает смены и комментарий этого дня"
+                  accessibilityState={{ selected }}
+                  style={({ pressed }) => [
                     styles.dayCell,
                     dayOff && styles.dayCellOff,
                     dayOff?.holiday && styles.dayCellHoliday,
+                    selected && styles.dayCellSelected,
                     hoveredDay?.date === date && styles.dayCellTooltipOpen,
+                    pressed && styles.dayCellPressed,
                   ]}
                   onPress={() => onSelect(date)}
                   onHoverIn={() => {
@@ -89,7 +105,7 @@ export function CalendarGrid({ month, state, onSelect }: CalendarGridProps) {
                     >
                       {day}
                     </Text>
-                    {dayNote ? <View style={styles.dayNoteUnderline} testID={`day-note-${day}`} /> : null}
+                    {dayNote ? <View style={styles.dayNoteDot} testID={`day-note-${day}`} /> : null}
                   </View>
                   {employeesOnShift.length > 0 ? (
                     <View style={styles.dayDots} testID={`day-employees-${day}`}>
@@ -170,18 +186,27 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     position: 'relative',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  dayCellSelected: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  dayCellPressed: {
+    opacity: 0.72,
   },
   dayCellTooltipOpen: {
     overflow: 'visible',
     zIndex: 20,
   },
-  dayNoteUnderline: {
+  dayNoteDot: {
     position: 'absolute',
-    bottom: 2,
-    width: 15,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#dc2626',
+    bottom: 1,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.accentStrong,
   },
   dayCellEmpty: {
     backgroundColor: 'transparent',
@@ -261,3 +286,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+function createDayAccessibilityLabel({
+  date,
+  today,
+  selected,
+  employeeNames,
+  dayOffLabel,
+  comment,
+}: {
+  date: string;
+  today: boolean;
+  selected: boolean;
+  employeeNames: string[];
+  dayOffLabel?: string;
+  comment?: string;
+}) {
+  const [year, month, day] = date.split('-').map(Number);
+  const dateLabel = new Date(year, month - 1, day).toLocaleDateString('ru-RU', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const parts = [
+    dateLabel,
+    today ? 'сегодня' : '',
+    selected ? 'выбрано' : '',
+    employeeNames.length ? `на смене: ${employeeNames.join(', ')}` : 'смен нет',
+    dayOffLabel ?? '',
+    comment ? `комментарий: ${comment}` : '',
+  ].filter(Boolean);
+
+  return parts.join('. ');
+}

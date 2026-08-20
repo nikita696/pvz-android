@@ -9,30 +9,54 @@ type MonthStepperProps = {
   formatMonthLabel: (month: string) => string;
   shiftMonth: (month: string, offset: number) => string;
   onChange: (month: string) => void;
+  onToday?: () => void;
+  showTodayAction?: boolean;
 };
 
-export function MonthStepper({ month, formatMonthLabel, shiftMonth, onChange }: MonthStepperProps) {
+export function MonthStepper({
+  month,
+  formatMonthLabel,
+  shiftMonth,
+  onChange,
+  onToday,
+  showTodayAction,
+}: MonthStepperProps) {
+  const showToday = Boolean(onToday) && (showTodayAction ?? true);
+
   return (
     <View style={styles.monthStepper}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Предыдущий месяц"
-        style={styles.roundButton}
-        onPress={() => onChange(shiftMonth(month, -1))}
-      >
-        <ChevronLeft size={24} color={colors.muted} />
-      </Pressable>
-      <Text style={styles.monthText} numberOfLines={1}>
-        {formatMonthLabel(month)}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Следующий месяц"
-        style={styles.roundButton}
-        onPress={() => onChange(shiftMonth(month, 1))}
-      >
-        <ChevronRight size={24} color={colors.muted} />
-      </Pressable>
+      <View style={styles.navigationRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Предыдущий месяц"
+          style={({ pressed }) => [styles.roundButton, pressed && styles.buttonPressed]}
+          onPress={() => onChange(shiftMonth(month, -1))}
+        >
+          <ChevronLeft accessible={false} size={24} color={colors.muted} />
+        </Pressable>
+        <Text accessibilityRole="header" style={styles.monthText} numberOfLines={1}>
+          {formatMonthLabel(month)}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Следующий месяц"
+          style={({ pressed }) => [styles.roundButton, pressed && styles.buttonPressed]}
+          onPress={() => onChange(shiftMonth(month, 1))}
+        >
+          <ChevronRight accessible={false} size={24} color={colors.muted} />
+        </Pressable>
+      </View>
+      {showToday ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Вернуться к сегодняшней дате"
+          style={({ pressed }) => [styles.todayButton, pressed && styles.todayButtonPressed]}
+          onPress={onToday}
+          testID="calendar-today"
+        >
+          <Text style={styles.todayButtonText}>Сегодня</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -40,18 +64,26 @@ export function MonthStepper({ month, formatMonthLabel, shiftMonth, onChange }: 
 const styles = StyleSheet.create({
   monthStepper: {
     flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  navigationRow: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 6,
   },
   roundButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonPressed: {
+    backgroundColor: colors.panelSoft,
   },
   monthText: {
     fontFamily: appFont,
@@ -61,5 +93,22 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontWeight: '900',
+  },
+  todayButton: {
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayButtonPressed: {
+    backgroundColor: colors.accentSoft,
+  },
+  todayButtonText: {
+    fontFamily: appFont,
+    color: colors.accentStrong,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
   },
 });

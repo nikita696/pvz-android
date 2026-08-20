@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
-const assets = ['manifest.json', 'pwa-icon-192.png', 'pwa-icon-512.png', 'sw.js'];
+const assets = ['manifest.json', 'pwa-icon-192.png', 'pwa-icon-512.png', 'sw.js', 'version.json'];
 
 await mkdir(join(root, 'dist'), { recursive: true });
 

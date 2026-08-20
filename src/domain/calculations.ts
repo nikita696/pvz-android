@@ -76,7 +76,7 @@ export function calculateSalary(
 
   const workedShifts = state.shifts.filter(
     (shift) => shift.employeeId === employee.id && shift.date <= cutoffDate,
-  ).length;
+  );
   const employeePayments = state.payments.filter(
     (payment) => payment.employeeId === employee.id && payment.paidAt <= cutoffDate,
   );
@@ -86,19 +86,68 @@ export function calculateSalary(
   const deductions = employeePayments
     .filter((payment) => payment.kind === 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
-  const accrued = workedShifts * employee.dailyRate;
+  const accrued = workedShifts.reduce(
+    (sum, shift) => sum + getEmployeeDailyRateForDate(employee, shift.date),
+    0,
+  );
   const paidAndDeductions = paid + deductions;
 
   return {
     employeeId: employee.id,
-    workedShifts,
+    workedShifts: workedShifts.length,
     dailyRate: employee.dailyRate,
     accrued,
     paid,
     deductions,
     paidAndDeductions,
-    due: Math.max(0, accrued - paidAndDeductions),
+    due: accrued - paidAndDeductions,
   };
+}
+
+/**
+ * Returns the rate that was effective on a specific shift date. Old states do
+ * not have rateHistory, so dailyRate remains the safe backwards-compatible
+ * fallback.
+ */
+export function getEmployeeDailyRateForDate(employee: Employee, date: string): number {
+  const rateHistory = employee.rateHistory;
+
+  if (!Array.isArray(rateHistory) || !rateHistory.length) {
+    return employee.dailyRate;
+  }
+
+  let effectiveRate: number | null = null;
+  let effectiveDate = '';
+
+  for (const entry of rateHistory) {
+    if (
+      !entry ||
+      typeof entry.effectiveDate !== 'string' ||
+      entry.effectiveDate > date ||
+      entry.effectiveDate < effectiveDate ||
+      !Number.isSafeInteger(entry.dailyRate) ||
+      entry.dailyRate < 0
+    ) {
+      continue;
+    }
+
+    effectiveDate = entry.effectiveDate;
+    effectiveRate = entry.dailyRate;
+  }
+
+  return effectiveRate ?? employee.dailyRate;
+}
+
+/** Active employees are always visible; archived employees stay visible until
+ * their signed balance reaches zero. */
+export function getEmployeesWithBalance(
+  state: AppState,
+  month: string,
+  cutoffDate = isoDateFromLocalDate(),
+): Employee[] {
+  return state.employees.filter(
+    (employee) => employee.active || calculateSalary(state, employee, month, cutoffDate).due !== 0,
+  );
 }
 
 export function calculateTotalDue(
@@ -108,9 +157,10 @@ export function calculateTotalDue(
 ): number {
   void month;
 
-  return state.employees
-    .filter((employee) => employee.active)
-    .reduce((sum, employee) => sum + calculateSalary(state, employee, month, cutoffDate).due, 0);
+  return state.employees.reduce(
+    (sum, employee) => sum + calculateSalary(state, employee, month, cutoffDate).due,
+    0,
+  );
 }
 
 export function getShiftCountByDate(state: AppState, date: string): number {

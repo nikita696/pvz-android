@@ -7,6 +7,7 @@ export const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const LIMITS = {
   employees: 200,
+  employeeRates: 500,
   shifts: 10_000,
   payments: 10_000,
   dayNotes: 5_000,
@@ -122,10 +123,24 @@ function normalizeEmployee(value: unknown, index: number): Employee {
 
   const id = readId(value.id, 'сотрудника');
   const rate = Number(value.dailyRate);
+  const rateHistoryValue = value.rateHistory === undefined
+    ? []
+    : readArray(value.rateHistory, 'истории ставок сотрудника', LIMITS.employeeRates);
+  const rateHistory = rateHistoryValue.map((entry, rateIndex) => normalizeEmployeeRate(entry, index, rateIndex));
 
   if (!Number.isSafeInteger(rate) || rate < 0 || rate > 100_000_000) {
     throw new InvalidBackupError(`Некорректная ставка у сотрудника №${index + 1}.`);
   }
+
+  assertUnique(
+    rateHistory.map((entry) => entry.id),
+    `В истории ставок сотрудника №${index + 1} повторяются записи.`,
+  );
+  assertUnique(
+    rateHistory.map((entry) => entry.effectiveDate),
+    `В истории ставок сотрудника №${index + 1} повторяются даты.`,
+  );
+  rateHistory.sort((first, second) => first.effectiveDate.localeCompare(second.effectiveDate));
 
   return {
     id,
@@ -133,6 +148,32 @@ function normalizeEmployee(value: unknown, index: number): Employee {
     dailyRate: rate,
     color: normalizeEmployeeColor(value.color, id),
     active: value.active !== false,
+    createdAt: isValidTimestamp(value.createdAt)
+      ? new Date(value.createdAt).toISOString()
+      : new Date(0).toISOString(),
+    ...(rateHistory.length ? { rateHistory } : {}),
+  };
+}
+
+function normalizeEmployeeRate(value: unknown, employeeIndex: number, rateIndex: number) {
+  if (!isRecord(value)) {
+    throw new InvalidBackupError(
+      `Некорректная ставка №${rateIndex + 1} у сотрудника №${employeeIndex + 1}.`,
+    );
+  }
+
+  const dailyRate = Number(value.dailyRate);
+
+  if (!Number.isSafeInteger(dailyRate) || dailyRate < 0 || dailyRate > 100_000_000) {
+    throw new InvalidBackupError(
+      `Некорректная ставка №${rateIndex + 1} у сотрудника №${employeeIndex + 1}.`,
+    );
+  }
+
+  return {
+    id: readId(value.id, 'ставки сотрудника'),
+    dailyRate,
+    effectiveDate: readDate(value.effectiveDate, 'ставки сотрудника'),
     createdAt: isValidTimestamp(value.createdAt)
       ? new Date(value.createdAt).toISOString()
       : new Date(0).toISOString(),
@@ -172,6 +213,10 @@ function normalizePayment(value: unknown, employeeIds: Set<string>): SalaryPayme
     throw new InvalidBackupError('В копии указана некорректная сумма выплаты.');
   }
 
+  const updatedAt = value.updatedAt === undefined
+    ? undefined
+    : normalizeTimestamp(value.updatedAt, 'выплаты');
+
   return {
     id: readId(value.id, 'выплаты'),
     employeeId,
@@ -179,6 +224,7 @@ function normalizePayment(value: unknown, employeeIds: Set<string>): SalaryPayme
     paidAt: readDate(value.paidAt, 'выплаты'),
     kind: value.kind === 'deduction' ? 'deduction' : 'payment',
     comment: typeof value.comment === 'string' ? value.comment.trim().slice(0, 80) : '',
+    ...(updatedAt ? { updatedAt } : {}),
   };
 }
 
@@ -268,6 +314,14 @@ function assertUnique(values: string[], message: string) {
 
 function isValidTimestamp(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+function normalizeTimestamp(value: unknown, label: string): string {
+  if (!isValidTimestamp(value)) {
+    throw new InvalidBackupError(`Некорректная дата изменения ${label}.`);
+  }
+
+  return new Date(value).toISOString();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

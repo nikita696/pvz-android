@@ -1,4 +1,11 @@
-export const appFont = 'Arial';
+import { Platform } from 'react-native';
+
+export const appFont = Platform.select({
+  ios: 'System',
+  android: 'sans-serif',
+  web: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  default: 'System',
+}) as string;
 
 export const colors = {
   background: '#FDFCFB',

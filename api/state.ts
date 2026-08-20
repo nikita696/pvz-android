@@ -1,33 +1,51 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import {
+  BackupNotFoundError,
   MissingDatabaseUrlError,
+  PaymentConflictError,
   PaymentNotFoundError,
   PaymentUndoUnavailableError,
+  ResourceConflictError,
   UnauthorizedError,
   addEmployee,
   addPayment,
   archiveEmployee,
-  deletePayment,
   deleteArchivedEmployee,
+  deletePayment,
   getState,
   importWorkspaceState,
+  previewWorkspaceBackup,
   requireWorkspaceSession,
   restoreDeletedEmployee,
   restoreDeletedPayment,
+  restoreEmployee,
+  restoreWorkspaceBackup,
+  revokeWorkspaceSession,
   saveDayNote,
+  setShift,
   toggleShift,
+  updateEmployee,
+  updateEmployeeColor,
   updateLocationName,
   updatePayment,
-  updateEmployeeColor,
 } from './_db';
-import { EMPLOYEE_COLOR_PALETTE, type ApiAction } from '../src/domain/types';
 import { InvalidBackupError } from '../src/domain/backup';
+import {
+  EMPLOYEE_COLOR_PALETTE,
+  type PaymentKind,
+  type WorkspaceBackupPreview,
+} from '../src/domain/types';
 import { isPaymentKind, isValidIsoDate, isValidPaymentAmount } from '../src/domain/paymentValidation';
+
+const MAX_POSTGRES_INTEGER = 2_147_483_647;
+
+type ActionResult = { backupPreview?: WorkspaceBackupPreview };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    const workspaceId = await requireWorkspaceSession(readBearerToken(req));
+    const token = readBearerToken(req);
+    const workspaceId = await requireWorkspaceSession(token);
 
     if (req.method === 'GET') {
       res.status(200).json(await getState(workspaceId));
@@ -41,8 +59,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const body = readAction(req.body);
-    await applyAction(workspaceId, body);
-    res.status(200).json(await getState(workspaceId));
+    const result = await applyAction(workspaceId, token ?? '', body);
+    res.status(200).json(await getState(workspaceId, { backupPreview: result.backupPreview }));
   } catch (error) {
     if (error instanceof MissingDatabaseUrlError) {
       res.status(503).json({
@@ -62,8 +80,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    if (error instanceof PaymentConflictError) {
+      res.status(409).json({ error: 'PAYMENT_CONFLICT' });
+      return;
+    }
+
     if (error instanceof PaymentUndoUnavailableError) {
       res.status(409).json({ error: 'PAYMENT_UNDO_UNAVAILABLE' });
+      return;
+    }
+
+    if (error instanceof ResourceConflictError) {
+      res.status(409).json({ error: 'CONFLICT' });
+      return;
+    }
+
+    if (error instanceof BackupNotFoundError) {
+      res.status(404).json({ error: 'BACKUP_NOT_FOUND' });
+      return;
+    }
+
+    if (error instanceof InvalidBackupError) {
+      res.status(400).json({ error: 'INVALID_BACKUP' });
       return;
     }
 
@@ -72,196 +110,289 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    console.error('[state] request failed', error);
     res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 }
 
-function readAction(body: unknown): ApiAction {
-  if (typeof body === 'string') {
-    return JSON.parse(body) as ApiAction;
+function readAction(body: unknown): Record<string, unknown> {
+  let value = body;
+
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value) as unknown;
+    } catch {
+      throwBadRequest();
+    }
   }
 
-  return body as ApiAction;
+  if (!isRecord(value) || typeof value.action !== 'string') {
+    throwBadRequest();
+  }
+
+  return value;
 }
 
-async function applyAction(workspaceId: string, body: ApiAction) {
-  if (!body || typeof body.action !== 'string') {
-    throw new Error('BAD_REQUEST');
+async function applyAction(
+  workspaceId: string,
+  sessionToken: string,
+  body: Record<string, unknown>,
+): Promise<ActionResult> {
+  const action = body.action;
+
+  if (action === 'addEmployee') {
+    const id = readOptionalId(body.id);
+    const name = readString(body.name, 1, 80);
+    const dailyRate = readInteger(body.dailyRate, 0, MAX_POSTGRES_INTEGER);
+    const color = readOptionalString(body.color, 1, 32);
+
+    if (color && !EMPLOYEE_COLOR_PALETTE.includes(color as (typeof EMPLOYEE_COLOR_PALETTE)[number])) {
+      throwBadRequest();
+    }
+
+    await addEmployee(workspaceId, name, dailyRate, color, id);
+    return {};
   }
 
-  if (body.action === 'addEmployee') {
-    const color = body.color?.trim();
-    const validColor = color && EMPLOYEE_COLOR_PALETTE.includes(color as (typeof EMPLOYEE_COLOR_PALETTE)[number])
-      ? color
-      : undefined;
+  if (action === 'updateEmployee') {
+    const employeeId = readId(body.employeeId);
+    const name = readOptionalString(body.name, 1, 80);
+    const hasRate = body.dailyRate !== undefined;
+    const hasDate = body.effectiveDate !== undefined;
+    const dailyRate = hasRate ? readInteger(body.dailyRate, 0, MAX_POSTGRES_INTEGER) : undefined;
+    const effectiveDate = hasDate ? readDate(body.effectiveDate) : undefined;
 
-    if (!body.name.trim() || !Number.isFinite(body.dailyRate) || body.dailyRate < 0) {
-      throw new Error('BAD_REQUEST');
+    if (name === undefined && dailyRate === undefined) {
+      throwBadRequest();
     }
 
-    if (color && !validColor) {
-      throw new Error('BAD_REQUEST');
+    if (hasRate !== hasDate) {
+      throwBadRequest();
     }
 
-    await addEmployee(workspaceId, body.name.trim(), body.dailyRate, validColor);
-    return;
+    await updateEmployee(workspaceId, employeeId, name, dailyRate, effectiveDate);
+    return {};
   }
 
-  if (body.action === 'updateLocation') {
-    if (!body.name.trim()) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await updateLocationName(workspaceId, body.name.trim());
-    return;
+  if (action === 'updateLocation') {
+    await updateLocationName(workspaceId, readString(body.name, 1, 120));
+    return {};
   }
 
-  if (body.action === 'updateEmployeeColor') {
-    if (
-      !body.employeeId ||
-      !EMPLOYEE_COLOR_PALETTE.includes(body.color as (typeof EMPLOYEE_COLOR_PALETTE)[number])
-    ) {
-      throw new Error('BAD_REQUEST');
+  if (action === 'updateEmployeeColor') {
+    const employeeId = readId(body.employeeId);
+    const color = readString(body.color, 1, 32);
+
+    if (!EMPLOYEE_COLOR_PALETTE.includes(color as (typeof EMPLOYEE_COLOR_PALETTE)[number])) {
+      throwBadRequest();
     }
 
-    await updateEmployeeColor(workspaceId, body.employeeId, body.color);
-    return;
+    await updateEmployeeColor(workspaceId, employeeId, color);
+    return {};
   }
 
-  if (body.action === 'archiveEmployee') {
-    if (!body.employeeId) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await archiveEmployee(workspaceId, body.employeeId);
-    return;
+  if (action === 'archiveEmployee') {
+    await archiveEmployee(workspaceId, readId(body.employeeId));
+    return {};
   }
 
-  if (body.action === 'deleteEmployee') {
-    if (!body.employeeId) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    const undoToken = body.undoToken?.trim() || crypto.randomUUID();
-
-    if (undoToken.length < 12 || undoToken.length > 200) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await deleteArchivedEmployee(workspaceId, body.employeeId, undoToken);
-    return;
+  if (action === 'restoreEmployee') {
+    await restoreEmployee(workspaceId, readId(body.employeeId));
+    return {};
   }
 
-  if (body.action === 'restoreDeletedEmployee') {
-    const undoToken = body.undoToken?.trim();
-
-    if (!undoToken || undoToken.length < 12 || undoToken.length > 200) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await restoreDeletedEmployee(workspaceId, undoToken);
-    return;
+  if (action === 'deleteEmployee') {
+    const employeeId = readId(body.employeeId);
+    const undoToken = readOptionalToken(body.undoToken) ?? crypto.randomUUID();
+    await deleteArchivedEmployee(workspaceId, employeeId, undoToken);
+    return {};
   }
 
-  if (body.action === 'toggleShift') {
-    if (!body.employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await toggleShift(workspaceId, body.employeeId, body.date);
-    return;
+  if (action === 'restoreDeletedEmployee') {
+    await restoreDeletedEmployee(workspaceId, readString(body.undoToken, 12, 200));
+    return {};
   }
 
-  if (body.action === 'saveDayNote') {
-    const comment = body.comment.trim();
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date) || comment.length > 160) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await saveDayNote(workspaceId, body.date, comment);
-    return;
+  if (action === 'toggleShift') {
+    await toggleShift(workspaceId, readId(body.employeeId), readDate(body.date));
+    return {};
   }
 
-  if (body.action === 'addPayment') {
-    const kind = body.kind ?? 'payment';
-    const comment = typeof body.comment === 'string' ? body.comment.trim() : '';
-
-    if (
-      !body.employeeId ||
-      !isValidPaymentAmount(body.amount) ||
-      !isValidIsoDate(body.paidAt) ||
-      !isPaymentKind(kind) ||
-      comment.length > 80
-    ) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await addPayment(workspaceId, body.employeeId, body.amount, body.paidAt, kind, comment);
-    return;
+  if (action === 'setShift') {
+    await setShift(
+      workspaceId,
+      readId(body.employeeId),
+      readDate(body.date),
+      readBoolean(body.assigned),
+    );
+    return {};
   }
 
-  if (body.action === 'updatePayment') {
-    const kind = body.kind ?? 'payment';
-    const comment = typeof body.comment === 'string' ? body.comment.trim() : '';
-
-    if (
-      !body.id ||
-      !body.employeeId ||
-      !isValidPaymentAmount(body.amount) ||
-      !isValidIsoDate(body.paidAt) ||
-      !isPaymentKind(kind) ||
-      comment.length > 80
-    ) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await updatePayment(workspaceId, body.id, body.employeeId, body.amount, body.paidAt, kind, comment);
-    return;
+  if (action === 'saveDayNote') {
+    await saveDayNote(workspaceId, readDate(body.date), readString(body.comment, 0, 160));
+    return {};
   }
 
-  if (body.action === 'deletePayment') {
-    if (!body.id || !body.employeeId) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    const undoToken = typeof body.undoToken === 'string' && body.undoToken.trim()
-      ? body.undoToken.trim()
-      : crypto.randomUUID();
-
-    if (undoToken.length < 12 || undoToken.length > 200) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await deletePayment(workspaceId, body.id, body.employeeId, undoToken);
-    return;
+  if (action === 'addPayment') {
+    const id = readOptionalId(body.id);
+    const employeeId = readId(body.employeeId);
+    const amount = readPaymentAmount(body.amount);
+    const paidAt = readDate(body.paidAt);
+    const kind = readPaymentKind(body.kind);
+    const comment = readOptionalString(body.comment, 0, 80) ?? '';
+    await addPayment(workspaceId, employeeId, amount, paidAt, kind, comment, id);
+    return {};
   }
 
-  if (body.action === 'restoreDeletedPayment') {
-    const undoToken = body.undoToken?.trim();
-
-    if (!undoToken || undoToken.length < 12 || undoToken.length > 200) {
-      throw new Error('BAD_REQUEST');
-    }
-
-    await restoreDeletedPayment(workspaceId, undoToken);
-    return;
+  if (action === 'updatePayment') {
+    const id = readId(body.id);
+    const employeeId = readId(body.employeeId);
+    const amount = readPaymentAmount(body.amount);
+    const paidAt = readDate(body.paidAt);
+    const kind = readPaymentKind(body.kind);
+    const comment = readOptionalString(body.comment, 0, 80) ?? '';
+    const expectedUpdatedAt = readOptionalTimestamp(body.expectedUpdatedAt);
+    await updatePayment(
+      workspaceId,
+      id,
+      employeeId,
+      amount,
+      paidAt,
+      kind,
+      comment,
+      expectedUpdatedAt,
+    );
+    return {};
   }
 
-  if (body.action === 'importState') {
-    try {
-      await importWorkspaceState(workspaceId, body.state);
-    } catch (error) {
-      if (error instanceof InvalidBackupError) {
-        throw new Error('BAD_REQUEST', { cause: error });
-      }
-
-      throw error;
-    }
-    return;
+  if (action === 'deletePayment') {
+    const id = readId(body.id);
+    const employeeId = readId(body.employeeId);
+    const undoToken = readOptionalToken(body.undoToken) ?? crypto.randomUUID();
+    const expectedUpdatedAt = readOptionalTimestamp(body.expectedUpdatedAt);
+    await deletePayment(workspaceId, id, employeeId, undoToken, expectedUpdatedAt);
+    return {};
   }
 
-  throw new Error('BAD_REQUEST');
+  if (action === 'restoreDeletedPayment') {
+    await restoreDeletedPayment(workspaceId, readString(body.undoToken, 12, 200));
+    return {};
+  }
+
+  if (action === 'importState') {
+    if (body.state === undefined) {
+      throwBadRequest();
+    }
+
+    await importWorkspaceState(workspaceId, body.state);
+    return {};
+  }
+
+  if (action === 'previewBackup') {
+    return { backupPreview: await previewWorkspaceBackup(workspaceId, readId(body.backupId)) };
+  }
+
+  if (action === 'restoreBackup') {
+    await restoreWorkspaceBackup(workspaceId, readId(body.backupId));
+    return {};
+  }
+
+  if (action === 'revokeCurrentSession') {
+    await revokeWorkspaceSession(workspaceId, sessionToken);
+    return {};
+  }
+
+  throwBadRequest();
+}
+
+function readPaymentKind(value: unknown): PaymentKind {
+  const kind = value === undefined ? 'payment' : value;
+  if (!isPaymentKind(kind)) {
+    throwBadRequest();
+  }
+
+  return kind;
+}
+
+function readPaymentAmount(value: unknown): number {
+  if (!isValidPaymentAmount(value)) {
+    throwBadRequest();
+  }
+
+  return value;
+}
+
+function readId(value: unknown): string {
+  return readString(value, 1, 160);
+}
+
+function readOptionalId(value: unknown): string | undefined {
+  return value === undefined ? undefined : readId(value);
+}
+
+function readDate(value: unknown): string {
+  if (!isValidIsoDate(value)) {
+    throwBadRequest();
+  }
+
+  return value;
+}
+
+function readBoolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throwBadRequest();
+  }
+
+  return value;
+}
+
+function readInteger(value: unknown, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) {
+    throwBadRequest();
+  }
+
+  return value;
+}
+
+function readString(value: unknown, minLength: number, maxLength: number): string {
+  if (typeof value !== 'string') {
+    throwBadRequest();
+  }
+
+  const normalized = value.trim();
+  if (normalized.length < minLength || normalized.length > maxLength) {
+    throwBadRequest();
+  }
+
+  return normalized;
+}
+
+function readOptionalString(
+  value: unknown,
+  minLength: number,
+  maxLength: number,
+): string | undefined {
+  return value === undefined ? undefined : readString(value, minLength, maxLength);
+}
+
+function readOptionalTimestamp(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string' || value.length > 80 || Number.isNaN(Date.parse(value))) {
+    throwBadRequest();
+  }
+
+  return new Date(value).toISOString();
+}
+
+function readOptionalToken(value: unknown): string | undefined {
+  if (value === undefined || (typeof value === 'string' && !value.trim())) {
+    return undefined;
+  }
+
+  return readString(value, 12, 200);
 }
 
 function readBearerToken(req: VercelRequest): string | null {
@@ -272,5 +403,14 @@ function readBearerToken(req: VercelRequest): string | null {
     return null;
   }
 
-  return value.slice('Bearer '.length).trim() || null;
+  const token = value.slice('Bearer '.length).trim();
+  return token.length > 0 && token.length <= 200 ? token : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function throwBadRequest(): never {
+  throw new Error('BAD_REQUEST');
 }

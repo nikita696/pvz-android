@@ -1,6 +1,13 @@
 import { Platform } from 'react-native';
 
 import type { ApiAction, AppState } from './domain/types';
+import { saveLastSuccessfulSnapshot } from './localSnapshot';
+import {
+  CURRENT_APP_VERSION,
+  evaluateAppVersion,
+  parseAppVersionManifest,
+  type AppVersionCheck,
+} from './version';
 
 const nativeApiBaseUrl = 'https://pvz-android.vercel.app';
 const apiBaseUrl =
@@ -8,6 +15,9 @@ const apiBaseUrl =
   (Platform.OS === 'web' ? '' : nativeApiBaseUrl);
 const NETWORK_ERROR_MESSAGE =
   '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u044c\u0441\u044f. \u041f\u0440\u043e\u0432\u0435\u0440\u044c\u0442\u0435 \u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442 \u0438 \u043f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.';
+const REQUEST_TIMEOUT_MESSAGE = 'Сервер не ответил за 12 секунд. Попробуй ещё раз.';
+
+export const API_REQUEST_TIMEOUT_MS = 12_000;
 
 type WorkspacePayload = {
   token: string;
@@ -27,13 +37,28 @@ export class ApiRequestError extends Error {
 export async function fetchState(token: string): Promise<AppState> {
   const response = await fetchApi(`${apiBaseUrl}/api/state`, {
     headers: getAuthHeaders(token),
+    cache: 'no-store',
   });
 
   if (!response.ok) {
     throw new ApiRequestError(await getApiError(response), response.status, await getApiCode(response));
   }
 
-  return response.json() as Promise<AppState>;
+  return readAndRememberState(response);
+}
+
+/** Always requests a fresh server state before a manual export or recovery snapshot. */
+export async function fetchFreshStateForBackup(token: string): Promise<AppState> {
+  const response = await fetchApi(`${apiBaseUrl}/api/state?fresh=${Date.now()}`, {
+    headers: getAuthHeaders(token),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new ApiRequestError(await getApiError(response), response.status, await getApiCode(response));
+  }
+
+  return readAndRememberState(response);
 }
 
 export async function sendAction(token: string, action: ApiAction): Promise<AppState> {
@@ -47,7 +72,7 @@ export async function sendAction(token: string, action: ApiAction): Promise<AppS
     throw new ApiRequestError(await getApiError(response), response.status, await getApiCode(response));
   }
 
-  return response.json() as Promise<AppState>;
+  return readAndRememberState(response);
 }
 
 export async function claimInvite(code: string): Promise<WorkspacePayload> {
@@ -61,7 +86,24 @@ export async function claimInvite(code: string): Promise<WorkspacePayload> {
     throw new ApiRequestError(await getApiError(response), response.status, await getApiCode(response));
   }
 
-  return response.json() as Promise<WorkspacePayload>;
+  const payload = await response.json() as WorkspacePayload;
+  await rememberState(payload.state);
+  return payload;
+}
+
+export async function checkAppVersion(
+  currentVersion = CURRENT_APP_VERSION,
+): Promise<AppVersionCheck> {
+  const response = await fetchApi(`${apiBaseUrl}/version.json?client=${encodeURIComponent(currentVersion)}`, {
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new ApiRequestError(await getApiError(response), response.status, await getApiCode(response));
+  }
+
+  const manifest = parseAppVersionManifest(await response.json());
+  return evaluateAppVersion(currentVersion, manifest);
 }
 
 function getAuthHeaders(token: string) {
@@ -71,10 +113,43 @@ function getAuthHeaders(token: string) {
 }
 
 async function fetchApi(input: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const externalSignal = init?.signal;
+  let timedOut = false;
+  const abortFromExternalSignal = () => controller.abort();
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, API_REQUEST_TIMEOUT_MS);
+
+  externalSignal?.addEventListener('abort', abortFromExternalSignal, { once: true });
+
   try {
-    return await fetch(input, init);
+    return await fetch(input, { ...init, signal: controller.signal });
   } catch {
+    if (timedOut) {
+      throw new ApiRequestError(REQUEST_TIMEOUT_MESSAGE, 0, 'REQUEST_TIMEOUT');
+    }
+
     throw new ApiRequestError(NETWORK_ERROR_MESSAGE, 0, 'NETWORK_ERROR');
+  } finally {
+    globalThis.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternalSignal);
+  }
+}
+
+async function readAndRememberState(response: Response): Promise<AppState> {
+  const state = await response.json() as AppState;
+  await rememberState(state);
+  return state;
+}
+
+async function rememberState(state: AppState) {
+  try {
+    await saveLastSuccessfulSnapshot(state);
+  } catch {
+    // A local recovery snapshot is best effort and must never turn a valid
+    // server response into an application error.
   }
 }
 
@@ -92,7 +167,7 @@ async function getApiError(response: Response): Promise<string> {
     const payload = (await response.clone().json()) as { error?: string; message?: string };
 
     if (payload.error === 'DATABASE_URL_MISSING') {
-      return '\u0411\u0430\u0437\u0430 Neon \u0435\u0449\u0451 \u043d\u0435 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0430.';
+      return 'Серверное хранилище временно недоступно.';
     }
 
     if (payload.error === 'UNAUTHORIZED') {
@@ -107,6 +182,26 @@ async function getApiError(response: Response): Promise<string> {
       return 'Код команды ещё не настроен на сервере.';
     }
 
+    if (payload.error === 'RATE_LIMITED') {
+      return 'Слишком много попыток. Подожди несколько минут и попробуй снова.';
+    }
+
+    if (payload.error === 'PAYMENT_CONFLICT') {
+      return 'Эту запись уже изменили на другом устройстве. Обнови данные перед повтором.';
+    }
+
+    if (payload.error === 'CONFLICT') {
+      return 'Такая запись уже существует или выбранный цвет занят. Обнови данные и попробуй снова.';
+    }
+
+    if (payload.error === 'BACKUP_NOT_FOUND') {
+      return 'Эта резервная копия больше недоступна. Обнови список копий.';
+    }
+
+    if (payload.error === 'INVALID_BACKUP') {
+      return 'Резервная копия повреждена или имеет неподдерживаемый формат.';
+    }
+
     if (payload.error === 'PAYMENT_NOT_FOUND') {
       return 'Эта запись уже изменена или удалена на другом устройстве. Обнови данные и попробуй ещё раз.';
     }
@@ -116,7 +211,7 @@ async function getApiError(response: Response): Promise<string> {
     }
 
     if (payload.error === 'BAD_REQUEST') {
-      return 'Проверь сумму, дату и тип выплаты.';
+      return 'Проверь заполненные поля и попробуй ещё раз.';
     }
 
     return payload.message ?? payload.error ?? `HTTP_${response.status}`;

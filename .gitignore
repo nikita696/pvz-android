@@ -28,6 +28,7 @@ yarn-error.*
 test-results/
 playwright-report/
 .codex-remote-attachments/
+opencode.json
 
 # macOS
 .DS_Store

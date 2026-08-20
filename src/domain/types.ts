@@ -20,6 +20,14 @@ export interface Employee {
   color: string;
   active: boolean;
   createdAt: string;
+  rateHistory?: EmployeeRate[];
+}
+
+export interface EmployeeRate {
+  id: string;
+  dailyRate: number;
+  effectiveDate: string;
+  createdAt: string;
 }
 
 export interface Shift {
@@ -37,6 +45,7 @@ export interface SalaryPayment {
   paidAt: string;
   kind: PaymentKind;
   comment: string;
+  updatedAt?: string;
 }
 
 export interface DayNote {
@@ -51,6 +60,27 @@ export interface AppState {
   shifts: Shift[];
   payments: SalaryPayment[];
   dayNotes: DayNote[];
+  backups?: WorkspaceBackupSummary[];
+  backupPreview?: WorkspaceBackupPreview;
+}
+
+export type WorkspaceBackupSource = 'daily' | 'pre-import' | 'pre-restore' | 'manual' | 'legacy';
+
+export interface WorkspaceBackupSummary {
+  id: string;
+  createdAt: string;
+  source: WorkspaceBackupSource;
+  locationName: string;
+  employees: number;
+  shifts: number;
+  payments: number;
+  dayNotes: number;
+}
+
+export interface WorkspaceBackupPreview extends WorkspaceBackupSummary {
+  employeeNames: string[];
+  firstDate: string | null;
+  lastDate: string | null;
 }
 
 export interface SalarySummary {
@@ -66,12 +96,21 @@ export interface SalarySummary {
 
 export type ApiAction =
   | { action: 'updateLocation'; name: string }
-  | { action: 'addEmployee'; name: string; dailyRate: number; color?: string }
+  | { action: 'addEmployee'; id?: string; name: string; dailyRate: number; color?: string }
+  | {
+      action: 'updateEmployee';
+      employeeId: string;
+      name?: string;
+      dailyRate?: number;
+      effectiveDate?: string;
+    }
   | { action: 'updateEmployeeColor'; employeeId: string; color: string }
   | { action: 'toggleShift'; employeeId: string; date: string }
+  | { action: 'setShift'; employeeId: string; date: string; assigned: boolean }
   | { action: 'saveDayNote'; date: string; comment: string }
   | {
       action: 'addPayment';
+      id?: string;
       employeeId: string;
       amount: number;
       paidAt: string;
@@ -86,10 +125,21 @@ export type ApiAction =
       paidAt: string;
       kind?: PaymentKind;
       comment?: string;
+      expectedUpdatedAt?: string;
     }
-  | { action: 'deletePayment'; id: string; employeeId: string; undoToken?: string }
+  | {
+      action: 'deletePayment';
+      id: string;
+      employeeId: string;
+      undoToken?: string;
+      expectedUpdatedAt?: string;
+    }
   | { action: 'restoreDeletedPayment'; undoToken: string }
   | { action: 'archiveEmployee'; employeeId: string }
+  | { action: 'restoreEmployee'; employeeId: string }
   | { action: 'deleteEmployee'; employeeId: string; undoToken?: string }
   | { action: 'restoreDeletedEmployee'; undoToken: string }
-  | { action: 'importState'; state: AppState };
+  | { action: 'importState'; state: AppState }
+  | { action: 'previewBackup'; backupId: string }
+  | { action: 'restoreBackup'; backupId: string }
+  | { action: 'revokeCurrentSession' };

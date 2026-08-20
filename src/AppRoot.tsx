@@ -7,14 +7,16 @@ import {
   Cog,
   PencilLine,
   Plus,
-  RefreshCw,
   Trash2,
   UserPlus,
 } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState as NativeAppState,
+  Platform,
   Pressable,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,13 +25,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiRequestError, claimInvite, fetchState, sendAction } from './api';
+import {
+  ApiRequestError,
+  checkAppVersion,
+  claimInvite,
+  fetchFreshStateForBackup,
+  fetchState,
+  sendAction,
+} from './api';
 import { exportWorkspaceBackup, pickWorkspaceBackup } from './backupFile';
 import { CalendarGrid } from './components/CalendarGrid';
 import { EmployeeAvatar } from './components/EmployeeAvatar';
 import { MonthStepper } from './components/MonthStepper';
 import { SelectedDayPanel } from './components/SelectedDayPanel';
-import { SettingsDialog } from './components/SettingsDialog';
+import { SettingsDialog, type SettingsBackupItem } from './components/SettingsDialog';
 import { Dialog, EmptyState, Field, Notice } from './components/primitives';
 import type { WorkspaceBackup } from './domain/backup';
 import { getDayOffInfo } from './domain/calendar';
@@ -38,13 +47,25 @@ import {
   calculateTotalDue,
   formatMoney,
   getDayNoteByDate,
+  getEmployeesWithBalance,
   hasShift,
 } from './domain/calculations';
-import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
+import { emptyAppState, getCurrentLocalDate } from './domain/seed';
 import { isValidPaymentAmount } from './domain/paymentValidation';
-import type { ApiAction, AppState, Employee, PaymentKind, SalaryPayment } from './domain/types';
+import { createMonthScheduleText, createMonthSummaryText } from './domain/shareSummary';
+import type {
+  ApiAction,
+  AppState,
+  Employee,
+  PaymentKind,
+  SalaryPayment,
+  WorkspaceBackupPreview,
+  WorkspaceBackupSummary,
+} from './domain/types';
 import { clearSessionToken, getStoredSessionToken, saveSessionToken } from './sessionToken';
+import { loadLastSuccessfulSnapshot } from './localSnapshot';
 import { appFont, colors } from './ui/theme';
+import { CURRENT_APP_VERSION, type AppVersionCheck } from './version';
 
 const MONTH_NAMES = [
   'январь',
@@ -75,8 +96,12 @@ const ONBOARDING_TEXT = {
 
 type DialogName =
   | 'assign'
+  | 'archiveEmployee'
+  | 'backupPreview'
   | 'deleteEmployee'
   | 'deletePayment'
+  | 'disconnect'
+  | 'editEmployee'
   | 'editPayment'
   | 'employeePayments'
   | 'employees'
@@ -90,6 +115,8 @@ type PaymentMonthGroup = {
   month: string;
   payments: SalaryPayment[];
   total: number;
+  paid: number;
+  deductions: number;
 };
 type EmployeeUndoNotice =
   | {
@@ -118,17 +145,55 @@ type PaymentUndoNotice =
       expiresAt: number;
     };
 
+type ShiftUndoNotice =
+  | {
+      status: 'pending';
+      employeeId: string;
+      employeeName: string;
+      date: string;
+      expiresAt: number;
+    }
+  | {
+      status: 'restored';
+      employeeName: string;
+      date: string;
+      expiresAt: number;
+    };
+
+type ArchiveUndoNotice =
+  | {
+      status: 'pending';
+      employeeId: string;
+      employeeName: string;
+      expiresAt: number;
+    }
+  | {
+      status: 'restored';
+      employeeName: string;
+      expiresAt: number;
+    };
+
 const UNDO_WINDOW_MS = 30_000;
 const UNDO_SUCCESS_VISIBLE_MS = 3_500;
 
 export default function AppRoot() {
   const networkState = useNetworkState();
+  const initialCurrentDate = useRef(getCurrentLocalDate()).current;
   const [state, setState] = useState<AppState>(emptyAppState);
-  const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
-  const [selectedDate, setSelectedDate] = useState(TODAY);
+  const [currentDate, setCurrentDate] = useState(initialCurrentDate);
+  const [selectedMonth, setSelectedMonth] = useState(initialCurrentDate.month);
+  const [selectedDate, setSelectedDate] = useState(initialCurrentDate.today);
   const [dialog, setDialog] = useState<DialogName>(null);
   const [locationName, setLocationName] = useState('');
+  const [locationError, setLocationError] = useState('');
   const [employeeName, setEmployeeName] = useState('');
+  const [employeeError, setEmployeeError] = useState('');
+  const [employeeToArchiveId, setEmployeeToArchiveId] = useState('');
+  const [employeeToEditId, setEmployeeToEditId] = useState('');
+  const [editEmployeeName, setEditEmployeeName] = useState('');
+  const [editEmployeeRate, setEditEmployeeRate] = useState('');
+  const [editEmployeeRateDate, setEditEmployeeRateDate] = useState('');
+  const [editEmployeeError, setEditEmployeeError] = useState('');
   const [employeeToDeleteId, setEmployeeToDeleteId] = useState('');
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [historyEmployeeId, setHistoryEmployeeId] = useState('');
@@ -140,27 +205,42 @@ export default function AppRoot() {
   const [paymentKind, setPaymentKind] = useState<PaymentKind>('payment');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentComment, setPaymentComment] = useState('');
-  const [paymentDateText, setPaymentDateText] = useState(formatDate(TODAY));
+  const [paymentDateText, setPaymentDateText] = useState(formatDate(initialCurrentDate.today));
   const [paymentError, setPaymentError] = useState('');
   const [dayNoteText, setDayNoteText] = useState('');
+  const [dayNoteError, setDayNoteError] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [onboarding, setOnboarding] = useState(false);
   const [selectedDayEmployeesOpen, setSelectedDayEmployeesOpen] = useState(false);
   const [expandedSelectedDayEmployees, setExpandedSelectedDayEmployees] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [hasLoadedState, setHasLoadedState] = useState(false);
+  const [fatalLoadError, setFatalLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const refreshingRef = useRef(false);
+  const pendingEmployeeCreateRef = useRef<{ fingerprint: string; id: string } | null>(null);
+  const pendingPaymentCreateRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [error, setError] = useState('');
   const [settingsError, setSettingsError] = useState('');
   const [settingsMessage, setSettingsMessage] = useState('');
+  const [versionCheck, setVersionCheck] = useState<AppVersionCheck | null>(null);
+  const [checkingVersion, setCheckingVersion] = useState(false);
   const [pendingBackup, setPendingBackup] = useState<WorkspaceBackup | null>(null);
   const [employeeUndoNotice, setEmployeeUndoNotice] = useState<EmployeeUndoNotice | null>(null);
   const [employeeUndoSeconds, setEmployeeUndoSeconds] = useState(0);
   const [paymentUndoNotice, setPaymentUndoNotice] = useState<PaymentUndoNotice | null>(null);
   const [paymentUndoSeconds, setPaymentUndoSeconds] = useState(0);
+  const [shiftUndoNotice, setShiftUndoNotice] = useState<ShiftUndoNotice | null>(null);
+  const [shiftUndoSeconds, setShiftUndoSeconds] = useState(0);
+  const [archiveUndoNotice, setArchiveUndoNotice] = useState<ArchiveUndoNotice | null>(null);
+  const [archiveUndoSeconds, setArchiveUndoSeconds] = useState(0);
+  const [backupPreview, setBackupPreview] = useState<WorkspaceBackupPreview | null>(null);
+  const previousOfflineRef = useRef<boolean | null>(null);
 
   const activeEmployees = useMemo(
     () => state.employees.filter((employee) => employee.active),
@@ -169,6 +249,23 @@ export default function AppRoot() {
   const archivedEmployees = useMemo(
     () => state.employees.filter((employee) => !employee.active),
     [state.employees],
+  );
+  const visibleBalanceEmployees = useMemo(
+    () => getEmployeesWithBalance(state, selectedMonth, currentDate.today),
+    [currentDate.today, selectedMonth, state],
+  );
+  const archivedEmployeesWithBalance = useMemo(
+    () => visibleBalanceEmployees.filter((employee) => !employee.active),
+    [visibleBalanceEmployees],
+  );
+  const paymentEmployees = useMemo(
+    () => state.employees.filter((employee) => employee.active || calculateSalary(
+      state,
+      employee,
+      selectedMonth,
+      currentDate.today,
+    ).due !== 0),
+    [currentDate.today, selectedMonth, state],
   );
   const selectedDayShifts = useMemo(
     () =>
@@ -197,6 +294,14 @@ export default function AppRoot() {
     () => state.employees.find((employee) => employee.id === employeeToDeleteId),
     [employeeToDeleteId, state.employees],
   );
+  const employeeToArchive = useMemo(
+    () => state.employees.find((employee) => employee.id === employeeToArchiveId),
+    [employeeToArchiveId, state.employees],
+  );
+  const employeeToEdit = useMemo(
+    () => state.employees.find((employee) => employee.id === employeeToEditId),
+    [employeeToEditId, state.employees],
+  );
   const employeeDeletionShiftCount = useMemo(
     () => state.shifts.filter((shift) => shift.employeeId === employeeToDeleteId).length,
     [employeeToDeleteId, state.shifts],
@@ -205,15 +310,23 @@ export default function AppRoot() {
     () => state.payments.filter((payment) => payment.employeeId === employeeToDeleteId).length,
     [employeeToDeleteId, state.payments],
   );
-  const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
+  const totalDue = useMemo(
+    () => calculateTotalDue(state, selectedMonth, currentDate.today),
+    [currentDate.today, selectedMonth, state],
+  );
   const offline = networkState.isConnected === false || networkState.isInternetReachable === false;
+  const readOnly = offline || syncFailed;
   const syncLabel = offline
-    ? 'Нет сети'
+    ? lastSyncedAt
+      ? `Нет сети · данные от ${formatSyncTime(lastSyncedAt)}`
+      : 'Нет сети'
     : syncing
-      ? 'Синхронизация…'
+      ? 'Обновляю…'
       : syncFailed
-        ? 'Ошибка синхронизации'
-        : 'Данные синхронизированы';
+        ? 'Не обновлено · нажми'
+        : lastSyncedAt
+          ? `Обновлено в ${formatSyncTime(lastSyncedAt)}`
+          : 'Готово к синхронизации';
   const deleteConfirmationMatches = Boolean(
     employeeToDelete &&
     deleteConfirmationText.trim().toLocaleLowerCase('ru-RU') === employeeToDelete.name.trim().toLocaleLowerCase('ru-RU'),
@@ -278,10 +391,85 @@ export default function AppRoot() {
     return () => clearInterval(interval);
   }, [paymentUndoNotice]);
 
+  useEffect(() => {
+    if (!shiftUndoNotice) {
+      setShiftUndoSeconds(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remainingMs = shiftUndoNotice.expiresAt - Date.now();
+
+      if (remainingMs <= 0) {
+        setShiftUndoNotice(null);
+        setShiftUndoSeconds(0);
+        return;
+      }
+
+      if (shiftUndoNotice.status === 'pending') {
+        setShiftUndoSeconds(Math.ceil(remainingMs / 1000));
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 250);
+    return () => clearInterval(interval);
+  }, [shiftUndoNotice]);
+
+  useEffect(() => {
+    if (!archiveUndoNotice) {
+      setArchiveUndoSeconds(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remainingMs = archiveUndoNotice.expiresAt - Date.now();
+
+      if (remainingMs <= 0) {
+        setArchiveUndoNotice(null);
+        setArchiveUndoSeconds(0);
+        return;
+      }
+
+      if (archiveUndoNotice.status === 'pending') {
+        setArchiveUndoSeconds(Math.ceil(remainingMs / 1000));
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 250);
+    return () => clearInterval(interval);
+  }, [archiveUndoNotice]);
+
+  useEffect(() => {
+    const subscription = NativeAppState.addEventListener('change', (nextStatus) => {
+      if (nextStatus !== 'active') {
+        return;
+      }
+
+      refreshToday();
+      if (sessionToken && hasLoadedState && !offline) {
+        void loadState(false);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [currentDate, hasLoadedState, offline, selectedDate, selectedMonth, sessionToken]);
+
+  useEffect(() => {
+    const wasOffline = previousOfflineRef.current;
+    previousOfflineRef.current = offline;
+
+    if (wasOffline === true && !offline && sessionToken && hasLoadedState) {
+      void loadState(false);
+    }
+  }, [hasLoadedState, offline, sessionToken]);
+
   async function bootstrapSession() {
     setLoading(true);
     setSyncing(true);
     setError('');
+    setFatalLoadError('');
 
     try {
       const storedToken = await getStoredSessionToken();
@@ -289,13 +477,18 @@ export default function AppRoot() {
       if (!storedToken) {
         setSessionToken(null);
         setState(emptyAppState);
+        setHasLoadedState(false);
         setOnboarding(true);
         setSyncFailed(false);
         return;
       }
 
-      setState(await fetchState(storedToken));
       setSessionToken(storedToken);
+      setOnboarding(false);
+      const nextState = await fetchState(storedToken);
+      setState(nextState);
+      setHasLoadedState(true);
+      setLastSyncedAt(new Date());
       setOnboarding(false);
       setSyncFailed(false);
     } catch (caught) {
@@ -303,11 +496,29 @@ export default function AppRoot() {
         await clearSessionToken();
         setSessionToken(null);
         setState(emptyAppState);
+        setHasLoadedState(false);
         setOnboarding(true);
         return;
       }
 
-      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
+      const message = caught instanceof Error ? caught.message : 'Не удалось загрузить данные.';
+
+      try {
+        const cached = await loadLastSuccessfulSnapshot();
+
+        if (cached) {
+          setState(cached.state);
+          setHasLoadedState(true);
+          setLastSyncedAt(new Date(cached.exportedAt));
+          setError(`${message} Показана последняя локальная копия только для просмотра.`);
+          setSyncFailed(true);
+          return;
+        }
+      } catch {
+        // The dedicated load error below is safer than rendering an empty app.
+      }
+
+      setFatalLoadError(`${message} В базе ничего не изменено.`);
       setSyncFailed(true);
     } finally {
       setLoading(false);
@@ -315,44 +526,76 @@ export default function AppRoot() {
     }
   }
 
-  async function loadState() {
+  async function loadState(showLoading = false) {
     if (!sessionToken) {
       setOnboarding(true);
       return;
     }
 
-    setLoading(true);
+    if (refreshingRef.current) {
+      return;
+    }
+
+    refreshingRef.current = true;
+    if (showLoading || !hasLoadedState) {
+      setLoading(true);
+    }
     setSyncing(true);
     setError('');
+    setFatalLoadError('');
 
     try {
-      setState(await fetchState(sessionToken));
+      const nextState = await fetchState(sessionToken);
+      setState(nextState);
+      setHasLoadedState(true);
+      setLastSyncedAt(new Date());
       setSyncFailed(false);
     } catch (caught) {
       if (isUnauthorized(caught)) {
         await clearSessionToken();
         setSessionToken(null);
         setState(emptyAppState);
+        setHasLoadedState(false);
         setOnboarding(true);
         return;
       }
 
-      setError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные из Neon.');
+      const message = caught instanceof Error ? caught.message : 'Не удалось загрузить данные.';
+
+      if (hasLoadedState) {
+        setError(`${message} Показаны последние загруженные данные.`);
+      } else {
+        setFatalLoadError(`${message} В базе ничего не изменено.`);
+      }
       setSyncFailed(true);
     } finally {
       setLoading(false);
       setSyncing(false);
+      refreshingRef.current = false;
     }
   }
 
-  async function mutate(action: ApiAction, setLocalError?: (message: string) => void): Promise<boolean> {
+  async function mutate(action: ApiAction, setLocalError?: (message: string) => void): Promise<AppState | null> {
     if (!sessionToken) {
       setOnboarding(true);
-      return false;
+      return null;
+    }
+
+    if (readOnly) {
+      const message = offline
+        ? 'Нет сети. Данные доступны для просмотра; изменения будут доступны после подключения.'
+        : 'Сначала обнови данные, чтобы безопасно сохранить изменение.';
+
+      if (setLocalError) {
+        setLocalError(message);
+      } else {
+        setError(message);
+      }
+      return null;
     }
 
     if (savingRef.current) {
-      return false;
+      return null;
     }
 
     savingRef.current = true;
@@ -362,16 +605,19 @@ export default function AppRoot() {
     setLocalError?.('');
 
     try {
-      setState(await sendAction(sessionToken, action));
+      const nextState = await sendAction(sessionToken, action);
+      setState(nextState);
+      setHasLoadedState(true);
+      setLastSyncedAt(new Date());
       setSyncFailed(false);
-      return true;
+      return nextState;
     } catch (caught) {
       if (isUnauthorized(caught)) {
         await clearSessionToken();
         setSessionToken(null);
         setState(emptyAppState);
         setOnboarding(true);
-        return false;
+        return null;
       }
 
       const message = caught instanceof Error ? caught.message : 'Не удалось сохранить в Neon.';
@@ -384,7 +630,7 @@ export default function AppRoot() {
       setSyncFailed(
         !(caught instanceof ApiRequestError) || caught.status === 0 || caught.status >= 500,
       );
-      return false;
+      return null;
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -397,6 +643,8 @@ export default function AppRoot() {
       await saveSessionToken(token);
       setSessionToken(token);
       setState(nextState);
+      setHasLoadedState(true);
+      setLastSyncedAt(new Date());
       setOnboarding(false);
       setInviteCode('');
       setError('');
@@ -434,33 +682,62 @@ export default function AppRoot() {
     const normalizedRate = dailyRate.trim();
     const rate = Number(normalizedRate);
 
-    if (!employeeName.trim() || !normalizedRate || !Number.isFinite(rate) || rate < 0) {
-      setError('Укажи имя и ставку от 0 ₽ в день.');
+    if (
+      !employeeName.trim() ||
+      employeeName.trim().length > 80 ||
+      !normalizedRate ||
+      !Number.isSafeInteger(rate) ||
+      rate < 0 ||
+      rate > 100_000_000
+    ) {
+      setEmployeeError('Укажи имя и ставку от 0 ₽ целыми рублями.');
       return;
     }
 
-    const saved = await mutate({ action: 'addEmployee', name: employeeName.trim(), dailyRate: rate });
+    const fingerprint = JSON.stringify([employeeName.trim(), rate]);
+    if (pendingEmployeeCreateRef.current?.fingerprint !== fingerprint) {
+      pendingEmployeeCreateRef.current = {
+        fingerprint,
+        id: createClientId('employee'),
+      };
+    }
+
+    const saved = await mutate(
+      {
+        action: 'addEmployee',
+        id: pendingEmployeeCreateRef.current.id,
+        name: employeeName.trim(),
+        dailyRate: rate,
+      },
+      setEmployeeError,
+    );
     if (!saved) {
       return;
     }
 
+    pendingEmployeeCreateRef.current = null;
     setEmployeeName('');
+    setEmployeeError('');
     setDailyRate('2500');
     setDialog(null);
   }
 
   function openLocationDialog() {
     setLocationName(state.location.name);
+    setLocationError('');
     setDialog('location');
   }
 
   async function saveLocationName() {
     if (!locationName.trim()) {
-      setError('Укажи название ПВЗ.');
+      setLocationError('Укажи название ПВЗ.');
       return;
     }
 
-    const saved = await mutate({ action: 'updateLocation', name: locationName.trim() });
+    const saved = await mutate(
+      { action: 'updateLocation', name: locationName.trim() },
+      setLocationError,
+    );
     if (!saved) {
       return;
     }
@@ -487,14 +764,30 @@ export default function AppRoot() {
       return;
     }
 
+    const normalizedComment = paymentComment.trim();
+    const fingerprint = JSON.stringify([
+      paymentEmployeeId,
+      amount,
+      paidAt,
+      paymentKind,
+      normalizedComment,
+    ]);
+    if (pendingPaymentCreateRef.current?.fingerprint !== fingerprint) {
+      pendingPaymentCreateRef.current = {
+        fingerprint,
+        id: createClientId('payment'),
+      };
+    }
+
     const saved = await mutate(
       {
         action: 'addPayment',
+        id: pendingPaymentCreateRef.current.id,
         employeeId: paymentEmployeeId,
         amount,
         paidAt,
         kind: paymentKind,
-        comment: paymentComment.trim(),
+        comment: normalizedComment,
       },
       setPaymentError,
     );
@@ -515,6 +808,7 @@ export default function AppRoot() {
 
   function openDayNoteDialog() {
     setDayNoteText(selectedDayNote);
+    setDayNoteError('');
     setDialog('dayNote');
   }
 
@@ -522,11 +816,14 @@ export default function AppRoot() {
     const comment = dayNoteText.trim();
 
     if (comment.length > 160) {
-      setError('Комментарий не длиннее 160 символов.');
+      setDayNoteError('Комментарий не длиннее 160 символов.');
       return;
     }
 
-    const saved = await mutate({ action: 'saveDayNote', date: selectedDate, comment });
+    const saved = await mutate(
+      { action: 'saveDayNote', date: selectedDate, comment },
+      setDayNoteError,
+    );
     if (!saved) {
       return;
     }
@@ -593,6 +890,7 @@ export default function AppRoot() {
         paidAt,
         kind: paymentKind,
         comment: paymentComment.trim(),
+        expectedUpdatedAt: paymentToEdit.updatedAt,
       },
       setPaymentError,
     );
@@ -617,6 +915,7 @@ export default function AppRoot() {
         id: deletedPayment.id,
         employeeId: deletedPayment.employeeId,
         undoToken,
+        expectedUpdatedAt: deletedPayment.updatedAt,
       },
       setPaymentError,
     );
@@ -657,6 +956,7 @@ export default function AppRoot() {
   }
 
   function resetPaymentForm() {
+    pendingPaymentCreateRef.current = null;
     setPaymentAmount('');
     setPaymentComment('');
     setPaymentEmployeeId('');
@@ -670,15 +970,100 @@ export default function AppRoot() {
     setSettingsError('');
     setSettingsMessage('');
     setDialog('settings');
+    void refreshVersionStatus();
+  }
+
+  async function refreshVersionStatus() {
+    if (checkingVersion) {
+      return;
+    }
+
+    setCheckingVersion(true);
+
+    try {
+      setVersionCheck(await checkAppVersion());
+    } catch {
+      setVersionCheck(null);
+    } finally {
+      setCheckingVersion(false);
+    }
+  }
+
+  function applyAvailableUpdate() {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.reload();
+      return;
+    }
+
+    setSettingsMessage(
+      `Доступна версия ${versionCheck?.latestVersion ?? ''}. Установи новую APK поверх текущей — данные ПВЗ сохранятся.`,
+    );
+  }
+
+  async function shareSchedule() {
+    await shareText(
+      `${state.location.name}: график`,
+      createMonthScheduleText(state, selectedMonth),
+      setSettingsMessage,
+      setSettingsError,
+    );
+  }
+
+  async function shareMonthSummary() {
+    await shareText(
+      `${state.location.name}: сводка`,
+      createMonthSummaryText(state, selectedMonth, currentDate.today),
+      setSettingsMessage,
+      setSettingsError,
+    );
+  }
+
+  function openDisconnectDialog() {
+    setDialog('disconnect');
+  }
+
+  async function disconnectWorkspace() {
+    const revoked = await mutate({ action: 'revokeCurrentSession' }, setSettingsError);
+
+    if (!revoked) {
+      setDialog('settings');
+      return;
+    }
+
+    await clearSessionToken();
+    setSessionToken(null);
+    setState(emptyAppState);
+    setHasLoadedState(false);
+    setLastSyncedAt(null);
+    setSyncFailed(false);
+    setDialog(null);
+    setOnboarding(true);
+  }
+
+  function refreshToday() {
+    const next = getCurrentLocalDate();
+    const previous = currentDate;
+
+    setCurrentDate(next);
+
+    if (selectedMonth === previous.month && selectedDate === previous.today) {
+      setSelectedMonth(next.month);
+      setSelectedDate(next.today);
+    } else if (selectedMonth === previous.month && next.month !== previous.month) {
+      setSelectedMonth(next.month);
+    }
   }
 
   async function changeEmployeeColor(employeeId: string, color: string) {
     setSettingsError('');
     setSettingsMessage('');
-    const saved = await mutate({ action: 'updateEmployeeColor', employeeId, color });
+    const saved = await mutate(
+      { action: 'updateEmployeeColor', employeeId, color },
+      setSettingsError,
+    );
 
     if (!saved) {
-      setSettingsError('Не удалось сохранить цвет сотрудника.');
+      setSettingsError((current) => current || 'Не удалось сохранить цвет сотрудника.');
     }
   }
 
@@ -688,7 +1073,15 @@ export default function AppRoot() {
     setSaving(true);
 
     try {
-      const fileName = await exportWorkspaceBackup(state);
+      if (!sessionToken) {
+        throw new Error('Сначала подключи ПВЗ.');
+      }
+
+      const freshState = await fetchFreshStateForBackup(sessionToken);
+      setState(freshState);
+      setLastSyncedAt(new Date());
+      setSyncFailed(false);
+      const fileName = await exportWorkspaceBackup(freshState);
       setSettingsMessage(`Резервная копия ${fileName} подготовлена.`);
     } catch (caught) {
       setSettingsError(caught instanceof Error ? caught.message : 'Не удалось сохранить резервную копию.');
@@ -728,7 +1121,48 @@ export default function AppRoot() {
 
     setPendingBackup(null);
     setSettingsError('');
-    setSettingsMessage('Резервная копия восстановлена. Предыдущее состояние сохранено в Neon.');
+    setSettingsMessage('Резервная копия восстановлена. Предыдущее состояние сохранено как страховочная копия.');
+    setDialog('settings');
+  }
+
+  async function previewServerBackup(backup: WorkspaceBackupSummary) {
+    setSettingsError('');
+    setSettingsMessage('');
+    const loaded = await mutate(
+      { action: 'previewBackup', backupId: backup.id },
+      setSettingsError,
+    );
+
+    if (!loaded) {
+      return;
+    }
+
+    if (!loaded.backupPreview) {
+      setSettingsError('Не удалось подготовить предпросмотр этой копии.');
+      return;
+    }
+
+    setBackupPreview(loaded.backupPreview);
+    setDialog('backupPreview');
+  }
+
+  async function restoreServerBackup() {
+    if (!backupPreview) {
+      return;
+    }
+
+    const restored = await mutate(
+      { action: 'restoreBackup', backupId: backupPreview.id },
+      setSettingsError,
+    );
+
+    if (!restored) {
+      setDialog('settings');
+      return;
+    }
+
+    setBackupPreview(null);
+    setSettingsMessage('Серверная копия восстановлена. Состояние до восстановления тоже сохранено.');
     setDialog('settings');
   }
 
@@ -739,18 +1173,146 @@ export default function AppRoot() {
 
   function changeSelectedMonth(month: string) {
     setSelectedMonth(month);
-    setSelectedDate(month === CURRENT_MONTH ? TODAY : `${month}-01`);
+    setSelectedDate(month === currentDate.month ? currentDate.today : `${month}-01`);
   }
 
-  async function toggleShiftAndClose(employeeId: string) {
-    const saved = await mutate({ action: 'toggleShift', employeeId, date: selectedDate });
-    if (saved) {
-      setDialog(null);
+  function goToToday() {
+    setSelectedMonth(currentDate.month);
+    setSelectedDate(currentDate.today);
+  }
+
+  async function setShiftAssignment(employee: Employee, assigned: boolean) {
+    const saved = await mutate({
+      action: 'setShift',
+      employeeId: employee.id,
+      date: selectedDate,
+      assigned,
+    });
+
+    if (saved && !assigned) {
+      setShiftUndoNotice({
+        status: 'pending',
+        employeeId: employee.id,
+        employeeName: employee.name,
+        date: selectedDate,
+        expiresAt: Date.now() + UNDO_WINDOW_MS,
+      });
+      setEmployeeUndoNotice(null);
+      setPaymentUndoNotice(null);
+      setArchiveUndoNotice(null);
     }
   }
 
-  async function archiveEmployee(employeeId: string) {
-    await mutate({ action: 'archiveEmployee', employeeId });
+  async function undoRemovedShift() {
+    if (shiftUndoNotice?.status !== 'pending' || shiftUndoNotice.expiresAt <= Date.now()) {
+      return;
+    }
+
+    const notice = shiftUndoNotice;
+    const restored = await mutate({
+      action: 'setShift',
+      employeeId: notice.employeeId,
+      date: notice.date,
+      assigned: true,
+    });
+
+    if (restored) {
+      setShiftUndoNotice({
+        status: 'restored',
+        employeeName: notice.employeeName,
+        date: notice.date,
+        expiresAt: Date.now() + UNDO_SUCCESS_VISIBLE_MS,
+      });
+    }
+  }
+
+  function openArchiveEmployee(employeeId: string) {
+    setEmployeeToArchiveId(employeeId);
+    setDialog('archiveEmployee');
+  }
+
+  async function archiveEmployee() {
+    if (!employeeToArchive) {
+      return;
+    }
+
+    const employee = employeeToArchive;
+    const archived = await mutate({ action: 'archiveEmployee', employeeId: employee.id });
+
+    if (!archived) {
+      return;
+    }
+
+    setArchiveUndoNotice({
+      status: 'pending',
+      employeeId: employee.id,
+      employeeName: employee.name,
+      expiresAt: Date.now() + UNDO_WINDOW_MS,
+    });
+    setEmployeeToArchiveId('');
+    setDialog('employees');
+  }
+
+  async function restoreEmployee(employeeId: string) {
+    await mutate({ action: 'restoreEmployee', employeeId }, setEmployeeError);
+  }
+
+  async function undoArchivedEmployee() {
+    if (archiveUndoNotice?.status !== 'pending' || archiveUndoNotice.expiresAt <= Date.now()) {
+      return;
+    }
+
+    const notice = archiveUndoNotice;
+    const restored = await mutate({ action: 'restoreEmployee', employeeId: notice.employeeId });
+
+    if (restored) {
+      setArchiveUndoNotice({
+        status: 'restored',
+        employeeName: notice.employeeName,
+        expiresAt: Date.now() + UNDO_SUCCESS_VISIBLE_MS,
+      });
+    }
+  }
+
+  function openEditEmployee(employee: Employee) {
+    setEmployeeToEditId(employee.id);
+    setEditEmployeeName(employee.name);
+    setEditEmployeeRate(String(employee.dailyRate));
+    setEditEmployeeRateDate(formatDate(currentDate.today));
+    setEditEmployeeError('');
+    setDialog('editEmployee');
+  }
+
+  async function saveEditedEmployee() {
+    const rate = Number(editEmployeeRate);
+    const effectiveDate = parseDateInput(editEmployeeRateDate);
+    const name = editEmployeeName.trim();
+
+    if (!employeeToEdit || !name || name.length > 80) {
+      setEditEmployeeError('Укажи имя сотрудника.');
+      return;
+    }
+
+    if (!Number.isSafeInteger(rate) || rate < 0 || rate > 100_000_000 || !effectiveDate) {
+      setEditEmployeeError('Ставка должна быть целым числом от 0 ₽, дата — существующей.');
+      return;
+    }
+
+    const saved = await mutate(
+      {
+        action: 'updateEmployee',
+        employeeId: employeeToEdit.id,
+        name,
+        dailyRate: rate,
+        effectiveDate,
+      },
+      setEditEmployeeError,
+    );
+
+    if (saved) {
+      setEmployeeToEditId('');
+      setDialog('employees');
+    }
   }
 
   function openDeleteEmployeeDialog(employeeId: string) {
@@ -876,12 +1438,17 @@ export default function AppRoot() {
                 <PencilLine size={14} color={colors.accentText} />
               </View>
             </Pressable>
-            <View
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${syncLabel}. Нажмите, чтобы обновить данные.`}
+              accessibilityLiveRegion="polite"
               style={[
                 styles.syncStatus,
                 offline && styles.syncStatusOffline,
                 syncFailed && !offline && styles.syncStatusError,
               ]}
+              disabled={syncing || offline}
+              onPress={() => void loadState(false)}
               testID="sync-status"
             >
               <View
@@ -900,7 +1467,7 @@ export default function AppRoot() {
               >
                 {syncLabel}
               </Text>
-            </View>
+            </Pressable>
           </View>
           <View style={styles.headerActions}>
             <Pressable
@@ -914,15 +1481,6 @@ export default function AppRoot() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Обновить данные"
-              style={styles.iconButton}
-              onPress={loadState}
-              testID="refresh"
-            >
-              <RefreshCw size={20} color={colors.accentText} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
               accessibilityLabel="Настройки"
               style={styles.iconButton}
               onPress={openSettings}
@@ -933,10 +1491,21 @@ export default function AppRoot() {
           </View>
         </View>
 
-        {loading ? (
+        {loading && !hasLoadedState ? (
           <View style={styles.centerState}>
             <ActivityIndicator color={colors.accent} />
-            <Text style={styles.muted}>Загружаю данные из Neon</Text>
+            <Text style={styles.muted}>Загружаю данные</Text>
+          </View>
+        ) : !hasLoadedState ? (
+          <View style={styles.centerState} testID="load-error-state">
+            <Notice text={fatalLoadError || 'Не удалось загрузить данные. В базе ничего не изменено.'} />
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => void bootstrapSession()}
+              testID="retry-initial-load"
+            >
+              <Text style={styles.primaryButtonText}>Повторить</Text>
+            </Pressable>
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.content}>
@@ -949,11 +1518,17 @@ export default function AppRoot() {
                   formatMonthLabel={formatMonthLabel}
                   shiftMonth={shiftMonth}
                   onChange={changeSelectedMonth}
+                  onToday={goToToday}
+                  showTodayAction={
+                    selectedMonth !== currentDate.month || selectedDate !== currentDate.today
+                  }
                 />
               </View>
               <CalendarGrid
                 month={selectedMonth}
                 state={state}
+                selectedDate={selectedDate}
+                today={currentDate.today}
                 onSelect={openAssignment}
               />
             </View>
@@ -961,12 +1536,16 @@ export default function AppRoot() {
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionHeaderText}>
-                  <Text style={styles.sectionTitle}>Зарплата</Text>
-                  <Text style={styles.muted}>Отработано по сегодня × ставка − выплаты и штрафы</Text>
+                  <Text style={styles.sectionTitle}>Текущий баланс</Text>
+                  <Text style={styles.muted}>Начислено по сегодня − выплаты и удержания</Text>
                 </View>
                 <Pressable
-                  style={[styles.smallButton, styles.paymentButton]}
-                  disabled={!activeEmployees.length}
+                  style={[
+                    styles.smallButton,
+                    styles.paymentButton,
+                    (!paymentEmployees.length || readOnly) && styles.disabledButton,
+                  ]}
+                  disabled={!paymentEmployees.length || readOnly}
                   onPress={openPaymentDialog}
                   testID="open-payment"
                 >
@@ -975,8 +1554,10 @@ export default function AppRoot() {
                 </Pressable>
               </View>
               <View style={styles.totalCard}>
-                <Text style={styles.muted}>Остаток к выплате</Text>
-                <Text style={styles.totalMoney}>{formatMoney(totalDue)}</Text>
+                <Text style={styles.muted}>
+                  {totalDue < 0 ? 'Общий аванс / переплата' : 'Общий баланс к выплате'}
+                </Text>
+                <Text style={styles.totalMoney}>{formatMoney(Math.abs(totalDue))}</Text>
               </View>
 
               {activeEmployees.map((employee) => (
@@ -985,9 +1566,37 @@ export default function AppRoot() {
                   state={state}
                   employee={employee}
                   month={selectedMonth}
+                  cutoffDate={currentDate.today}
                   onOpen={() => openEmployeePayments(employee.id)}
                 />
               ))}
+
+              {archivedEmployeesWithBalance.length ? (
+                <View style={styles.archivedBalanceSection}>
+                  <Text style={styles.fieldLabel}>Архив — нужно рассчитаться</Text>
+                  {archivedEmployeesWithBalance.map((employee) => (
+                    <SalaryCard
+                      key={employee.id}
+                      state={state}
+                      employee={employee}
+                      month={selectedMonth}
+                      cutoffDate={currentDate.today}
+                      archived
+                      onOpen={() => openEmployeePayments(employee.id)}
+                    />
+                  ))}
+                </View>
+              ) : null}
+
+              {!activeEmployees.length ? (
+                <Pressable
+                  style={styles.primaryButton}
+                  onPress={() => setDialog('employees')}
+                  testID="add-first-employee"
+                >
+                  <Text style={styles.primaryButtonText}>Добавить первого сотрудника</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             <SelectedDayPanel
@@ -1068,12 +1677,62 @@ export default function AppRoot() {
           </View>
         ) : null}
 
+        {shiftUndoNotice ? (
+          <View style={styles.undoBanner} testID="shift-undo-banner">
+            <View style={styles.undoTextContainer}>
+              <Text style={styles.undoTitle}>
+                {shiftUndoNotice.status === 'pending'
+                  ? `Смена ${shiftUndoNotice.employeeName} снята · ${shiftUndoSeconds} с`
+                  : `Смена ${shiftUndoNotice.employeeName} возвращена`}
+              </Text>
+              <Text style={styles.undoBody}>{formatDate(shiftUndoNotice.date)}</Text>
+            </View>
+            {shiftUndoNotice.status === 'pending' ? (
+              <Pressable
+                disabled={saving}
+                style={[styles.undoButton, saving && styles.disabledButton]}
+                onPress={() => void undoRemovedShift()}
+                testID="undo-remove-shift"
+              >
+                <Text style={styles.undoButtonText}>Отменить</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {archiveUndoNotice ? (
+          <View style={styles.undoBanner} testID="archive-undo-banner">
+            <View style={styles.undoTextContainer}>
+              <Text style={styles.undoTitle}>
+                {archiveUndoNotice.status === 'pending'
+                  ? `${archiveUndoNotice.employeeName} в архиве · ${archiveUndoSeconds} с`
+                  : `${archiveUndoNotice.employeeName} снова в команде`}
+              </Text>
+              <Text style={styles.undoBody}>Смены и выплаты сохранены.</Text>
+            </View>
+            {archiveUndoNotice.status === 'pending' ? (
+              <Pressable
+                disabled={saving}
+                style={[styles.undoButton, saving && styles.disabledButton]}
+                onPress={() => void undoArchivedEmployee()}
+                testID="undo-archive-employee"
+              >
+                <Text style={styles.undoButtonText}>Отменить</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         <Dialog
           visible={dialog === 'assign'}
           title={selectedDateLabel}
+          closeLabel="Готово"
           closeTestID="close-assignment"
           onClose={() => setDialog(null)}
         >
+          {readOnly ? (
+            <Notice text="Показаны последние загруженные данные. Обнови соединение перед изменением смен." />
+          ) : null}
           {selectedDayOff ? (
             <View style={styles.assignmentDayOffNote}>
               <Text style={styles.assignmentDayOffText}>{selectedDayOff.label}</Text>
@@ -1101,12 +1760,16 @@ export default function AppRoot() {
                       active && styles.assignmentRowActive,
                       active && { borderColor: employee.color },
                     ]}
-                    onPress={() => void toggleShiftAndClose(employee.id)}
+                    disabled={readOnly || saving}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active, disabled: readOnly || saving }}
+                    accessibilityLabel={`${employee.name}: ${active ? 'на смене' : 'не на смене'}`}
+                    onPress={() => void setShiftAssignment(employee, !active)}
                     testID={`assign-employee-${employee.name}`}
                   >
                     <View style={styles.employeeTitleRow}>
                       <EmployeeAvatar name={employee.name} color={employee.color} />
-                      <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+                      <Text style={styles.employeeName}>{employee.name}</Text>
                     </View>
                     <Text style={[styles.shiftStatus, active && { color: employee.color }]}>
                       {active ? 'На смене' : 'Добавить'}
@@ -1121,10 +1784,30 @@ export default function AppRoot() {
         </Dialog>
 
         <Dialog visible={dialog === 'dayNote'} title="Комментарий ко дню" onClose={() => setDialog(null)}>
+          <View style={styles.quickNoteChips}>
+            {['Замена', 'Больничный', 'Опоздание', 'Прогул'].map((note) => (
+              <Pressable
+                key={note}
+                accessibilityRole="button"
+                accessibilityState={{ selected: dayNoteText.trim() === note }}
+                style={[styles.quickNoteChip, dayNoteText.trim() === note && styles.quickNoteChipActive]}
+                onPress={() => {
+                  setDayNoteText(note);
+                  setDayNoteError('');
+                }}
+              >
+                <Text style={styles.quickNoteChipText}>{note}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {dayNoteError ? <Notice text={dayNoteError} /> : null}
           <TextInput
             style={[styles.input, styles.dayNoteInput]}
             value={dayNoteText}
-            onChangeText={setDayNoteText}
+            onChangeText={(value) => {
+              setDayNoteText(value);
+              setDayNoteError('');
+            }}
             placeholder="Например: замена, опоздание, прогул, больничный"
             placeholderTextColor="#9CA3AF"
             multiline
@@ -1137,7 +1820,17 @@ export default function AppRoot() {
         </Dialog>
 
         <Dialog visible={dialog === 'location'} title="Название ПВЗ" onClose={() => setDialog(null)}>
-          <Field label="Название" value={locationName} onChangeText={setLocationName} testID="location-name" />
+          {locationError ? <Notice text={locationError} /> : null}
+          <Field
+            label="Название"
+            value={locationName}
+            onChangeText={(value) => {
+              setLocationName(value);
+              setLocationError('');
+            }}
+            maxLength={120}
+            testID="location-name"
+          />
           <Pressable style={styles.primaryButton} onPress={saveLocationName} testID="save-location">
             <Text style={styles.primaryButtonText}>Сохранить</Text>
           </Pressable>
@@ -1156,19 +1849,29 @@ export default function AppRoot() {
                   <View style={styles.employeeTitleRow}>
                     <EmployeeAvatar name={employee.name} color={employee.color} />
                     <View>
-                      <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+                      <Text style={styles.employeeName}>{employee.name}</Text>
                       <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
                     </View>
                   </View>
-                  <Pressable
-                    style={styles.archiveButton}
-                    onPress={() => void archiveEmployee(employee.id)}
-                    hitSlop={8}
-                    testID={`archive-employee-${employee.name}`}
-                  >
-                    <Archive size={16} color={colors.accentText} />
-                    <Text style={styles.archiveButtonText}>В архив</Text>
-                  </Pressable>
+                  <View style={styles.employeeManagerActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Изменить ${employee.name}`}
+                      style={styles.managerIconButton}
+                      onPress={() => openEditEmployee(employee)}
+                      testID={`edit-employee-${employee.name}`}
+                    >
+                      <PencilLine size={17} color={colors.text} />
+                    </Pressable>
+                    <Pressable
+                      style={styles.archiveButton}
+                      onPress={() => openArchiveEmployee(employee.id)}
+                      testID={`archive-employee-${employee.name}`}
+                    >
+                      <Archive size={16} color={colors.accentText} />
+                      <Text style={styles.archiveButtonText}>В архив</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))
             ) : (
@@ -1187,25 +1890,46 @@ export default function AppRoot() {
                       <Text style={styles.muted}>Архивирован</Text>
                     </View>
                   </View>
-                  <Pressable
-                    style={styles.deleteTextButton}
-                    onPress={() => openDeleteEmployeeDialog(employee.id)}
-                    hitSlop={8}
-                    testID={`delete-archived-employee-${employee.name}`}
-                  >
-                    <Trash2 size={16} color={colors.dangerText} />
-                    <Text style={styles.deleteTextButtonText}>Удалить</Text>
-                  </Pressable>
+                  <View style={styles.employeeManagerActions}>
+                    <Pressable
+                      style={styles.restoreEmployeeButton}
+                      onPress={() => void restoreEmployee(employee.id)}
+                      testID={`restore-employee-${employee.name}`}
+                    >
+                      <Text style={styles.restoreEmployeeButtonText}>Вернуть</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.deleteTextButton}
+                      onPress={() => openDeleteEmployeeDialog(employee.id)}
+                      testID={`delete-archived-employee-${employee.name}`}
+                    >
+                      <Trash2 size={16} color={colors.dangerText} />
+                      <Text style={styles.deleteTextButtonText}>Удалить</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
           ) : null}
-          <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
+          {employeeError ? <Notice text={employeeError} /> : null}
+          <Field
+            label="Имя"
+            value={employeeName}
+            onChangeText={(value) => {
+              setEmployeeName(value);
+              setEmployeeError('');
+            }}
+            maxLength={80}
+            testID="employee-name"
+          />
           <View style={styles.employeeRateField}>
             <Field
               label="Ставка в день, ₽"
               value={dailyRate}
-              onChangeText={setDailyRate}
+              onChangeText={(value) => {
+                setDailyRate(value);
+                setEmployeeError('');
+              }}
               keyboardType="numeric"
               testID="employee-rate"
             />
@@ -1217,8 +1941,94 @@ export default function AppRoot() {
         </Dialog>
 
         <Dialog
+          visible={dialog === 'archiveEmployee' && Boolean(employeeToArchive)}
+          title="Переместить в архив?"
+          closeLabel="Отмена"
+          onClose={() => {
+            setEmployeeToArchiveId('');
+            setDialog('employees');
+          }}
+        >
+          {employeeToArchive ? (
+            <View style={styles.importSummary}>
+              <Text style={styles.warningText}>
+                {employeeToArchive.name} исчезнет только из назначения будущих смен. История останется.
+              </Text>
+              <Text style={styles.importSummaryText}>
+                {formatEmployeeBalance(
+                  calculateSalary(state, employeeToArchive, selectedMonth, currentDate.today).due,
+                )}
+              </Text>
+            </View>
+          ) : null}
+          <Pressable
+            disabled={saving}
+            style={[styles.primaryButton, saving && styles.disabledButton]}
+            onPress={() => void archiveEmployee()}
+            testID="confirm-archive-employee"
+          >
+            <Text style={styles.primaryButtonText}>Переместить в архив</Text>
+          </Pressable>
+        </Dialog>
+
+        <Dialog
+          visible={dialog === 'editEmployee' && Boolean(employeeToEdit)}
+          title="Изменить сотрудника"
+          closeLabel="Отмена"
+          onClose={() => {
+            setEmployeeToEditId('');
+            setEditEmployeeError('');
+            setDialog('employees');
+          }}
+        >
+          {editEmployeeError ? <Notice text={editEmployeeError} /> : null}
+          <Field
+            label="Имя"
+            value={editEmployeeName}
+            onChangeText={(value) => {
+              setEditEmployeeName(value);
+              setEditEmployeeError('');
+            }}
+            maxLength={80}
+            testID="edit-employee-name"
+          />
+          <Field
+            label="Новая ставка в день, ₽"
+            value={editEmployeeRate}
+            onChangeText={(value) => {
+              setEditEmployeeRate(value);
+              setEditEmployeeError('');
+            }}
+            keyboardType="numeric"
+            testID="edit-employee-rate"
+          />
+          <Field
+            label="Применять с даты, ДД.ММ.ГГГГ"
+            value={editEmployeeRateDate}
+            onChangeText={(value) => {
+              setEditEmployeeRateDate(value);
+              setEditEmployeeError('');
+            }}
+            placeholder="03.08.2026"
+            testID="edit-employee-rate-date"
+          />
+          <Text style={styles.employeeRateHint}>
+            Старые смены останутся рассчитаны по прежней ставке.
+          </Text>
+          <Pressable
+            disabled={saving}
+            style={[styles.primaryButton, saving && styles.disabledButton]}
+            onPress={() => void saveEditedEmployee()}
+            testID="save-edit-employee"
+          >
+            <Text style={styles.primaryButtonText}>Сохранить</Text>
+          </Pressable>
+        </Dialog>
+
+        <Dialog
           visible={dialog === 'deleteEmployee'}
           title="Удалить из базы?"
+          closeLabel="Отмена"
           onClose={() => {
             setEmployeeToDeleteId('');
             setDeleteConfirmationText('');
@@ -1251,10 +2061,15 @@ export default function AppRoot() {
           </Pressable>
         </Dialog>
 
-        <Dialog visible={dialog === 'payment'} title="Выплата" onClose={() => setDialog(null)}>
+        <Dialog
+          visible={dialog === 'payment'}
+          title="Выплата"
+          closeLabel="Отмена"
+          onClose={() => setDialog(null)}
+        >
           <Text style={styles.fieldLabel}>Сотрудник</Text>
           <View style={styles.chips}>
-            {activeEmployees.map((employee) => (
+            {paymentEmployees.map((employee) => (
               <Pressable
                 key={employee.id}
                 style={[
@@ -1348,7 +2163,7 @@ export default function AppRoot() {
               setPaymentComment(value);
               setPaymentError('');
             }}
-            placeholder={paymentKind === 'deduction' ? 'штраф, удержание' : 'нал, СБП, аванс, зарплата'}
+            placeholder={paymentKind === 'deduction' ? 'причина удержания' : 'нал, СБП, аванс, зарплата'}
             maxLength={80}
             testID="payment-comment"
           />
@@ -1370,11 +2185,94 @@ export default function AppRoot() {
           busy={saving}
           message={settingsMessage}
           error={settingsError}
+          backupStatus={getBackupStatus(state.backups ?? [])}
+          backupItems={(state.backups ?? []).map(toSettingsBackupItem)}
+          restoringBackupId={backupPreview?.id ?? null}
+          appVersion={CURRENT_APP_VERSION}
+          updateStatus={getVersionStatus(versionCheck)}
+          updateAvailable={versionCheck?.updateAvailable ?? false}
+          checkingForUpdate={checkingVersion}
           onClose={() => setDialog(null)}
           onColorChange={(employeeId, color) => void changeEmployeeColor(employeeId, color)}
           onExport={() => void exportBackup()}
           onImport={() => void selectBackupForImport()}
+          onShareSchedule={() => void shareSchedule()}
+          onShareSummary={() => void shareMonthSummary()}
+          onRestoreBackup={(backupId) => {
+            const backup = state.backups?.find((item) => item.id === backupId);
+            if (backup) {
+              void previewServerBackup(backup);
+            }
+          }}
+          onEditEmployee={(employeeId) => {
+            const employee = state.employees.find((item) => item.id === employeeId);
+            if (employee) {
+              openEditEmployee(employee);
+            }
+          }}
+          onRestoreEmployee={(employeeId) => void restoreEmployee(employeeId)}
+          onCheckForUpdate={() => void refreshVersionStatus()}
+          onApplyUpdate={applyAvailableUpdate}
+          onDisconnect={openDisconnectDialog}
         />
+
+        <Dialog
+          visible={dialog === 'backupPreview' && Boolean(backupPreview)}
+          title="Восстановить серверную копию?"
+          closeLabel="Отмена"
+          onClose={() => {
+            setBackupPreview(null);
+            setDialog('settings');
+          }}
+        >
+          {backupPreview ? (
+            <View style={styles.importSummary}>
+              <Text style={styles.warningText}>
+                Текущие данные будут заменены. Перед этим сервер создаст ещё одну страховочную копию.
+              </Text>
+              <Text style={styles.importSummaryText}>{backupPreview.locationName}</Text>
+              <Text style={styles.importSummaryText}>
+                Сотрудников: {backupPreview.employees} · смен: {backupPreview.shifts}
+              </Text>
+              <Text style={styles.importSummaryText}>
+                Выплат: {backupPreview.payments} · комментариев: {backupPreview.dayNotes}
+              </Text>
+              <Text style={styles.importSummaryText}>
+                Период: {formatBackupRange(backupPreview.firstDate, backupPreview.lastDate)}
+              </Text>
+              <Text style={styles.importSummaryText}>
+                Копия от {formatDateTime(backupPreview.createdAt)}
+              </Text>
+            </View>
+          ) : null}
+          <Pressable
+            disabled={saving}
+            style={[styles.dangerButton, saving && styles.disabledButton]}
+            onPress={() => void restoreServerBackup()}
+            testID="confirm-restore-server-backup"
+          >
+            <Text style={styles.dangerButtonText}>Восстановить эту копию</Text>
+          </Pressable>
+        </Dialog>
+
+        <Dialog
+          visible={dialog === 'disconnect'}
+          title="Отключить ПВЗ?"
+          closeLabel="Отмена"
+          onClose={() => setDialog('settings')}
+        >
+          <Text style={styles.warningText}>
+            На этом устройстве снова появится экран ввода кода. Общий график, сотрудники и выплаты не удалятся.
+          </Text>
+          <Pressable
+            disabled={saving}
+            style={[styles.dangerButton, saving && styles.disabledButton]}
+            onPress={() => void disconnectWorkspace()}
+            testID="confirm-disconnect-workspace"
+          >
+            <Text style={styles.dangerButtonText}>Отключить это устройство</Text>
+          </Pressable>
+        </Dialog>
 
         <Dialog
           visible={dialog === 'importBackup' && Boolean(pendingBackup)}
@@ -1387,7 +2285,7 @@ export default function AppRoot() {
           {pendingBackup ? (
             <View style={styles.importSummary}>
               <Text style={styles.warningText}>
-                Текущие данные этого ПВЗ будут заменены. Перед заменой сервер автоматически сохранит их в Neon.
+                Текущие данные этого ПВЗ будут заменены. Перед заменой сервер автоматически сохранит страховочную копию.
               </Text>
               <Text style={styles.importSummaryText}>
                 Сотрудников: {pendingBackup.state.employees.length} · смен: {pendingBackup.state.shifts.length}
@@ -1413,6 +2311,7 @@ export default function AppRoot() {
         <Dialog
           visible={dialog === 'employeePayments' && Boolean(historyEmployee)}
           title={historyEmployee ? `Выплаты: ${historyEmployee.name}` : 'Выплаты'}
+          scrollable={false}
           closeTestID="close-payment-history"
           onClose={() => {
             setHistoryEmployeeId('');
@@ -1434,6 +2333,7 @@ export default function AppRoot() {
         <Dialog
           visible={dialog === 'editPayment' && Boolean(paymentToEdit)}
           title="Изменить запись"
+          closeLabel="Отмена"
           closeTestID="close-edit-payment"
           onClose={() => {
             resetPaymentForm();
@@ -1508,7 +2408,7 @@ export default function AppRoot() {
               setPaymentComment(value);
               setPaymentError('');
             }}
-            placeholder={paymentKind === 'deduction' ? 'штраф, удержание' : 'нал, СБП, аванс, зарплата'}
+            placeholder={paymentKind === 'deduction' ? 'причина удержания' : 'нал, СБП, аванс, зарплата'}
             maxLength={80}
             testID="edit-payment-comment"
           />
@@ -1525,6 +2425,7 @@ export default function AppRoot() {
         <Dialog
           visible={dialog === 'deletePayment' && Boolean(paymentToDelete)}
           title="Удалить запись?"
+          closeLabel="Отмена"
           closeTestID="close-delete-payment"
           onClose={() => {
             setPaymentToDeleteId('');
@@ -1571,21 +2472,28 @@ function SalaryCard({
   state,
   employee,
   month,
+  cutoffDate,
+  archived = false,
   onOpen,
 }: {
   state: AppState;
   employee: Employee;
   month: string;
+  cutoffDate: string;
+  archived?: boolean;
   onOpen: () => void;
 }) {
-  const salary = calculateSalary(state, employee, month);
+  const salary = calculateSalary(state, employee, month, cutoffDate);
+  const balanceLabel = salary.due < 0 ? 'Аванс / переплата' : 'К выплате';
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`${employee.name}. ${formatEmployeeBalance(salary.due)}. Открыть историю.`}
       style={({ pressed }) => [
         styles.salaryCard,
         { borderLeftColor: employee.color },
+        archived && styles.salaryCardArchived,
         pressed && styles.salaryCardPressed,
       ]}
       onPress={onOpen}
@@ -1593,19 +2501,24 @@ function SalaryCard({
     >
       <View style={styles.salaryCardInfo}>
         <View style={styles.employeeTitleRow}>
-          <EmployeeAvatar name={employee.name} color={employee.color} />
-          <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+          <EmployeeAvatar name={employee.name} color={employee.color} muted={archived} />
+          <Text style={styles.employeeName}>{employee.name}</Text>
+          {archived ? <Text style={styles.archivedInlineLabel}>Архив</Text> : null}
         </View>
         <Text style={styles.muted}>
-          {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − {formatMoney(salary.paidAndDeductions)}
+          {salary.workedShifts} смен · начислено {formatMoney(salary.accrued)}
         </Text>
-        {salary.deductions > 0 ? (
-          <Text style={styles.deductionLine}>Удержано {formatMoney(salary.deductions)}</Text>
-        ) : null}
+        <Text style={styles.deductionLine}>
+          Выплачено {formatMoney(salary.paid)} · удержано {formatMoney(salary.deductions)}
+        </Text>
       </View>
       <View style={styles.salaryDue}>
-        <Text style={styles.miniLabel}>К выплате</Text>
-        <Text style={styles.dueMoney}>{formatMoney(salary.due)}</Text>
+        <Text style={styles.miniLabel}>{balanceLabel}</Text>
+        <Text style={styles.dueMoney}>{formatMoney(Math.abs(salary.due))}</Text>
+        <View style={styles.historyAffordance}>
+          <Text style={styles.historyAffordanceText}>История</Text>
+          <ChevronRight size={14} color={colors.muted} />
+        </View>
       </View>
     </Pressable>
   );
@@ -1653,7 +2566,7 @@ function PaymentHistory({
               <View style={styles.historyMonthTitle}>
                 <Text style={styles.historyMonthName}>{formatHistoryMonthLabel(group.month)}</Text>
                 <Text style={styles.muted}>
-                  Записей: {group.payments.length} · Учтено: {formatMoney(group.total)}
+                  Записей: {group.payments.length} · выплачено {formatMoney(group.paid)} · удержано {formatMoney(group.deductions)}
                 </Text>
               </View>
             </Pressable>
@@ -1820,7 +2733,138 @@ function getPaymentMonthGroups(state: AppState, employeeId: string): PaymentMont
     month,
     payments,
     total: payments.reduce((sum, payment) => sum + payment.amount, 0),
+    paid: payments
+      .filter((payment) => payment.kind === 'payment')
+      .reduce((sum, payment) => sum + payment.amount, 0),
+    deductions: payments
+      .filter((payment) => payment.kind === 'deduction')
+      .reduce((sum, payment) => sum + payment.amount, 0),
   }));
+}
+
+function formatSyncTime(value: Date): string {
+  return value.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function createClientId(prefix: 'employee' | 'payment'): string {
+  const uuid = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${uuid}`;
+}
+
+async function shareText(
+  title: string,
+  message: string,
+  onSuccess: (message: string) => void,
+  onError: (message: string) => void,
+) {
+  onSuccess('');
+  onError('');
+
+  try {
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+      const webNavigator = navigator as Navigator & {
+        share?: (data: { title: string; text: string }) => Promise<void>;
+      };
+
+      if (webNavigator.share) {
+        await webNavigator.share({ title, text: message });
+        onSuccess('Текст подготовлен для отправки.');
+        return;
+      }
+
+      if (webNavigator.clipboard) {
+        await webNavigator.clipboard.writeText(message);
+        onSuccess('Текст скопирован в буфер обмена.');
+        return;
+      }
+    }
+
+    await Share.share({ title, message });
+    onSuccess('Текст подготовлен для отправки.');
+  } catch (caught) {
+    if (caught instanceof Error && caught.name === 'AbortError') {
+      return;
+    }
+
+    onError('Не удалось подготовить текст для отправки.');
+  }
+}
+
+function formatEmployeeBalance(balance: number): string {
+  if (balance > 0) {
+    return `К выплате ${formatMoney(balance)}`;
+  }
+
+  if (balance < 0) {
+    return `Аванс / переплата ${formatMoney(Math.abs(balance))}`;
+  }
+
+  return 'Баланс закрыт';
+}
+
+function getBackupStatus(backups: readonly WorkspaceBackupSummary[]): string {
+  const latest = [...backups].sort((first, second) => second.createdAt.localeCompare(first.createdAt))[0];
+
+  if (!latest) {
+    return 'Серверная автокопия ещё не создана.';
+  }
+
+  const createdAt = new Date(latest.createdAt);
+  const ageHours = (Date.now() - createdAt.getTime()) / 3_600_000;
+  const prefix = ageHours > 36 ? 'Внимание: последняя копия' : 'Последняя серверная копия';
+
+  return `${prefix}: ${createdAt.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+}
+
+function toSettingsBackupItem(backup: WorkspaceBackupSummary): SettingsBackupItem {
+  const sourceLabels: Record<WorkspaceBackupSummary['source'], string> = {
+    daily: 'Ежедневная копия',
+    'pre-import': 'Перед загрузкой файла',
+    'pre-restore': 'Перед восстановлением',
+    manual: 'Ручная копия',
+    legacy: 'Резервная копия',
+  };
+
+  return {
+    id: backup.id,
+    title: `${sourceLabels[backup.source]} · ${formatDateTime(backup.createdAt)}`,
+    detail: `${backup.employees} сотрудников · ${backup.shifts} смен · ${backup.payments} записей`,
+    automatic: backup.source === 'daily',
+  };
+}
+
+function getVersionStatus(version: AppVersionCheck | null): string {
+  if (!version) {
+    return 'Обновление можно проверить вручную.';
+  }
+
+  if (version.updateRequired) {
+    return `Версия ${version.latestVersion} обязательна для безопасной работы.`;
+  }
+
+  if (version.updateAvailable) {
+    return `Доступна версия ${version.latestVersion}.`;
+  }
+
+  return 'Установлена актуальная версия.';
+}
+
+function formatBackupRange(firstDate: string | null, lastDate: string | null): string {
+  if (!firstDate && !lastDate) {
+    return 'датированные записи отсутствуют';
+  }
+
+  if (firstDate === lastDate || !lastDate) {
+    return firstDate ? formatDate(firstDate) : 'дата не указана';
+  }
+
+  return `${firstDate ? formatDate(firstDate) : '…'} — ${formatDate(lastDate)}`;
 }
 
 const styles = StyleSheet.create({
@@ -2019,6 +3063,10 @@ const styles = StyleSheet.create({
   section: {
     gap: 10,
   },
+  archivedBalanceSection: {
+    gap: 10,
+    paddingTop: 2,
+  },
   sectionHeader: {
     paddingHorizontal: 2,
     flexDirection: 'row',
@@ -2169,10 +3217,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  employeeManagerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  managerIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   archiveButton: {
-    minHeight: 34,
-    borderRadius: 17,
-    paddingHorizontal: 10,
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 12,
     backgroundColor: colors.accent,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2192,9 +3255,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   deleteTextButton: {
-    minHeight: 34,
-    borderRadius: 17,
-    paddingHorizontal: 10,
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 12,
     backgroundColor: colors.dangerBg,
     borderWidth: 1,
     borderColor: colors.dangerBorder,
@@ -2214,6 +3277,22 @@ const styles = StyleSheet.create({
     color: colors.dangerText,
     fontSize: 13,
     lineHeight: 18,
+  },
+  restoreEmployeeButton: {
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 12,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  restoreEmployeeButtonText: {
+    fontFamily: appFont,
+    color: colors.accentStrong,
+    fontSize: 11,
+    fontWeight: '800',
   },
   deleteImpact: {
     borderRadius: 12,
@@ -2280,6 +3359,9 @@ const styles = StyleSheet.create({
   salaryCardPressed: {
     opacity: 0.82,
   },
+  salaryCardArchived: {
+    backgroundColor: colors.panelSoft,
+  },
   salaryCardInfo: {
     flex: 1,
     minWidth: 0,
@@ -2327,6 +3409,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
+  archivedInlineLabel: {
+    borderRadius: 9,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    backgroundColor: colors.panelSoft,
+    color: colors.muted,
+    fontFamily: appFont,
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  historyAffordance: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  historyAffordanceText: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '700',
+  },
   undoBanner: {
     position: 'absolute',
     left: 14,
@@ -2367,8 +3471,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   undoButton: {
-    minHeight: 38,
-    borderRadius: 19,
+    minHeight: 44,
+    borderRadius: 22,
     paddingHorizontal: 13,
     backgroundColor: colors.accentWarm,
     alignItems: 'center',
@@ -2414,6 +3518,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     gap: 4,
+  },
+  quickNoteChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  quickNoteChip: {
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: 13,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickNoteChipActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  quickNoteChipText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
   importSummary: {
     borderRadius: 12,
@@ -2541,9 +3670,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   historyIconButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.panelSoft,
     borderWidth: 1,
     borderColor: colors.border,
@@ -2583,8 +3712,8 @@ const styles = StyleSheet.create({
   },
   paymentTypeButton: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: 19,
+    minHeight: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -2611,9 +3740,9 @@ const styles = StyleSheet.create({
     color: colors.dangerText,
   },
   chip: {
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: 13,
-    borderRadius: 19,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',

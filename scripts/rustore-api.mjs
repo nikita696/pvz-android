@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { createSign } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -60,7 +61,14 @@ function createSignature({ keyId, privateKey, timestamp }) {
 }
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, options);
+  } catch (error) {
+    const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
+    const reason = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause ?? error);
+    throw new Error(`RuStore request failed: ${reason}`, { cause: error });
+  }
   const text = await response.text();
 
   let body = null;
@@ -103,6 +111,30 @@ async function callApi(path, options = {}) {
   return request(path, { ...options, headers });
 }
 
+function runCommand(command, args) {
+  return new Promise((resolveCommand, rejectCommand) => {
+    const child = spawn(command, args, { windowsHide: true });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', rejectCommand);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolveCommand(stdout);
+        return;
+      }
+
+      rejectCommand(new Error(`Upload command failed (${code}): ${stderr || stdout}`));
+    });
+  });
+}
+
 async function main() {
   const command = process.argv[2] ?? 'auth';
 
@@ -125,18 +157,16 @@ async function main() {
     const packageName = requireEnv('RUSTORE_PACKAGE_NAME');
     const contactEmail = requireEnv('RUSTORE_CONTACT_EMAIL');
     const body = {
-      appName: 'PVZ',
+      appName: 'ПВЗ График и Выплаты',
       appType: 'MAIN',
       categories: ['business'],
-      ageLegal: '3+',
+      ageLegal: '0+',
       shortDescription: 'Трекер смен и выплат для пункта выдачи.',
       fullDescription:
         'PVZ Android помогает вести календарь смен сотрудников, считать выплаты, фиксировать комментарии к дням и видеть задолженность по зарплате.',
-      whatsNew: 'Первый релиз приложения для учета смен и выплат.',
+      whatsNew: 'Для подключения к ПВЗ нужен код доступа.',
       moderInfo: 'Внутренний рабочий инструмент для учета смен.',
-      publishType: 'MANUAL',
-      minAndroidVersion: 8,
-      developerContacts: [{ email: contactEmail, website: 'https://pvz-android.vercel.app' }],
+      developerContacts: { email: contactEmail, website: 'https://pvz-android.vercel.app' },
     };
     const response = await callApi(`/public/v1/application/${encodeURIComponent(packageName)}/version`, {
       method: 'POST',
@@ -144,6 +174,45 @@ async function main() {
       body: JSON.stringify(body),
     });
     console.log(JSON.stringify({ status: response.status, body: response.body }, null, 2));
+    return;
+  }
+
+  if (command === 'upload-apk') {
+    readLocalEnv();
+    const packageName = requireEnv('RUSTORE_PACKAGE_NAME');
+    const versionId = process.argv[3];
+    const apkPath = process.argv[4];
+
+    if (!versionId || !apkPath) {
+      throw new Error('Usage: upload-apk <versionId> <apkPath>');
+    }
+
+    const token = await getToken();
+    const endpoint = `${API_BASE_URL}/public/v1/application/${encodeURIComponent(packageName)}/version/${encodeURIComponent(versionId)}/apk?servicesType=Unknown&isMainApk=true`;
+    const output = await runCommand(
+      process.platform === 'win32' ? 'curl.exe' : 'curl',
+      [
+        '--fail-with-body',
+        '--location',
+        '--http1.1',
+        '--silent',
+        '--show-error',
+        '--retry',
+        '3',
+        '--connect-timeout',
+        '30',
+        '--max-time',
+        '1800',
+        '--header',
+        `Public-Token: ${token}`,
+        '--header',
+        'Expect:',
+        '--form',
+        `file=@${resolve(apkPath)}`,
+        endpoint,
+      ],
+    );
+    console.log(output);
     return;
   }
 

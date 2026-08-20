@@ -44,7 +44,7 @@ export function SelectedDayPanel({
         <View style={styles.sectionHeaderText}>
           <Text style={styles.sectionTitle}>{selectedDateLabel}</Text>
           <Text style={styles.muted}>
-            {shiftCount ? `${shiftCount} смен(ы)` : 'Смен нет'}
+            {shiftCount ? formatShiftCount(shiftCount) : 'Смен нет'}
           </Text>
         </View>
       </View>
@@ -52,15 +52,18 @@ export function SelectedDayPanel({
       <View style={styles.selectedEmployeesPanel}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={`Сотрудники, ${activeEmployees.length}`}
+          accessibilityHint={employeesOpen ? 'Сворачивает список сотрудников' : 'Разворачивает список сотрудников'}
+          accessibilityState={{ expanded: employeesOpen }}
           style={styles.selectedEmployeesHeader}
           onPress={onToggleEmployeesOpen}
           testID="toggle-selected-day-employees"
         >
           <View style={styles.selectedEmployeesTitleRow}>
             {employeesOpen ? (
-              <ChevronDown size={18} color={colors.accentText} />
+              <ChevronDown accessible={false} size={18} color={colors.accentText} />
             ) : (
-              <ChevronRight size={18} color={colors.accentText} />
+              <ChevronRight accessible={false} size={18} color={colors.accentText} />
             )}
             <Text style={styles.selectedEmployeesTitle}>Сотрудники</Text>
           </View>
@@ -84,6 +87,9 @@ export function SelectedDayPanel({
                   >
                     <Pressable
                       accessibilityRole="button"
+                      accessibilityLabel={`${employee.name}, ${assigned ? 'на смене' : 'нет смены'}`}
+                      accessibilityHint={expanded ? 'Сворачивает статистику сотрудника' : 'Разворачивает статистику сотрудника'}
+                      accessibilityState={{ expanded }}
                       style={styles.selectedEmployeeHeader}
                       onPress={() => onToggleEmployee(employee.id)}
                       testID={`toggle-selected-day-employee-${employee.name}`}
@@ -102,9 +108,9 @@ export function SelectedDayPanel({
                           {assigned ? 'на смене' : 'нет смены'}
                         </Text>
                         {expanded ? (
-                          <ChevronDown size={16} color={colors.muted} />
+                          <ChevronDown accessible={false} size={16} color={colors.muted} />
                         ) : (
-                          <ChevronRight size={16} color={colors.muted} />
+                          <ChevronRight accessible={false} size={16} color={colors.muted} />
                         )}
                       </View>
                     </Pressable>
@@ -130,7 +136,7 @@ export function SelectedDayPanel({
                         </View>
                         <View style={styles.selectedEmployeeStat}>
                           <View style={styles.selectedEmployeeStatLabelGroup}>
-                            <Text style={styles.selectedEmployeeStatLabel}>Трудоустройство</Text>
+                            <Text style={styles.selectedEmployeeStatLabel}>Первая смена</Text>
                           </View>
                           <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
                             {firstShiftDate ? formatDate(firstShiftDate) : 'нет смен'}

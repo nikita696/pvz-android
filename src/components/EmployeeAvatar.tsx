@@ -24,7 +24,9 @@ export function EmployeeAvatar({ name, color, size = 'small', muted = false }: E
 
   return (
     <View
-      accessibilityLabel={`Сотрудник ${name}`}
+      accessible={false}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       style={[
         styles.avatar,
         {
@@ -38,7 +40,7 @@ export function EmployeeAvatar({ name, color, size = 'small', muted = false }: E
       ]}
     >
       <Text
-        allowFontScaling={false}
+        accessible={false}
         style={[
           styles.initial,
           {
