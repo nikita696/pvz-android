@@ -1067,7 +1067,11 @@ export default function AppRoot() {
               onToggleEmployee={toggleSelectedDayEmployee}
               onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
             />
-            <View style={styles.employeeArchivePanel}>
+            <View
+              style={styles.employeeArchivePanel}
+              testID="employee-archive-panel"
+              accessibilityLabel="Управление архивом сотрудников"
+            >
               <View style={styles.employeeArchiveHeader}>
                 <View style={styles.employeeArchiveTitleRow}>
                   <Archive size={18} color={colors.muted} />
@@ -1301,6 +1305,7 @@ export default function AppRoot() {
             style={styles.employeeManagerScroll}
             contentContainerStyle={styles.employeeManagerScrollContent}
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
           <View style={styles.employeeManagerList}>
             {activeEmployees.length ? (
@@ -2475,6 +2480,7 @@ const styles = StyleSheet.create({
   },
   employeeManagerScroll: {
     flexShrink: 1,
+    maxHeight: 430,
   },
   employeeManagerScrollContent: {
     gap: 14,
