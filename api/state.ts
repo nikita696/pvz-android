@@ -121,12 +121,19 @@ async function applyAction(workspaceId: string, body: ApiAction) {
     if (
       !body.employeeId ||
       !Number.isFinite(body.weekdayRate) || body.weekdayRate < 0 ||
-      !Number.isFinite(body.weekendRate) || body.weekendRate < 0
+      !Number.isFinite(body.weekendRate) || body.weekendRate < 0 ||
+      !isValidIsoDate(body.effectiveFrom)
     ) {
       throw new Error('BAD_REQUEST');
     }
 
-    await updateEmployeeRates(workspaceId, body.employeeId, body.weekdayRate, body.weekendRate);
+    await updateEmployeeRates(
+      workspaceId,
+      body.employeeId,
+      body.weekdayRate,
+      body.weekendRate,
+      body.effectiveFrom,
+    );
     return;
   }
 
