@@ -2531,11 +2531,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   employeeArchivePanel: {
-    borderRadius: 14,
-    backgroundColor: colors.panelSoft,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 14,
     gap: 12,
   },
   employeeArchiveHeader: {
