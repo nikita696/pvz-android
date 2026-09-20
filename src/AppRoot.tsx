@@ -39,6 +39,7 @@ import {
   formatMoney,
   getDayNoteByDate,
   hasShift,
+  isoDateFromLocalDate,
 } from './domain/calculations';
 import { CURRENT_MONTH, TODAY, emptyAppState } from './domain/seed';
 import { isValidPaymentAmount } from './domain/paymentValidation';
@@ -209,7 +210,11 @@ export default function AppRoot() {
     () => state.payments.filter((payment) => payment.employeeId === employeeToDeleteId).length,
     [employeeToDeleteId, state.payments],
   );
-  const totalDue = useMemo(() => calculateTotalDue(state, selectedMonth), [state, selectedMonth]);
+  const payrollCutoffDate = isoDateFromLocalDate();
+  const totalDue = useMemo(
+    () => calculateTotalDue(state, selectedMonth, payrollCutoffDate),
+    [payrollCutoffDate, selectedMonth, state],
+  );
   const offline = networkState.isConnected === false || networkState.isInternetReachable === false;
   const syncLabel = offline
     ? 'Нет сети'
@@ -1055,6 +1060,7 @@ export default function AppRoot() {
                   state={state}
                   employee={employee}
                   month={selectedMonth}
+                  cutoffDate={payrollCutoffDate}
                   onOpen={() => openEmployeePayments(employee.id)}
                 />
               ))}
@@ -1805,14 +1811,16 @@ function SalaryCard({
   state,
   employee,
   month,
+  cutoffDate,
   onOpen,
 }: {
   state: AppState;
   employee: Employee;
   month: string;
+  cutoffDate: string;
   onOpen: () => void;
 }) {
-  const salary = calculateSalary(state, employee, month);
+  const salary = calculateSalary(state, employee, month, cutoffDate);
 
   return (
     <Pressable
