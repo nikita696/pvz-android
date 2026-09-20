@@ -6,6 +6,7 @@ import {
   getDayNoteByDate,
   getEmployeeFirstShiftDate,
   getEmployeeMonthShiftCounts,
+  getShiftFraction,
   getEmployeeWorkedShiftCount,
   getShiftCountByDate,
   hasShift,
@@ -126,6 +127,31 @@ describe('minimal payroll formula', () => {
     expect(calculateSalary(historicalState, employee, '2026-05', '2026-05-03').accrued).toBe(
       2500 + 3200,
     );
+  });
+
+  it('splits a double shift into half a shift and half pay for each active employee', () => {
+    const secondEmployee = {
+      ...state.employees[0],
+      id: 'emp-2',
+      name: 'Саша',
+      color: '#123456',
+    };
+    const doubleShiftState: AppState = {
+      ...state,
+      employees: [state.employees[0], secondEmployee, state.employees[1]],
+      shifts: [
+        ...state.shifts,
+        { id: 'shift-double', employeeId: 'emp-2', date: '2026-05-11' },
+      ],
+    };
+
+    expect(getShiftFraction(doubleShiftState, doubleShiftState.shifts[2])).toBe(0.5);
+    expect(getEmployeeMonthShiftCounts(doubleShiftState, 'emp-1', '2026-05', '2026-05-11')).toEqual({
+      total: 3.5,
+      worked: 2.5,
+    });
+    expect(calculateSalary(doubleShiftState, doubleShiftState.employees[0], '2026-05', '2026-05-11').workedShifts).toBe(3.5);
+    expect(calculateSalary(doubleShiftState, doubleShiftState.employees[0], '2026-05', '2026-05-11').accrued).toBe(8750);
   });
 
   it('checks if a shift is already marked', () => {
