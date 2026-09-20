@@ -24,6 +24,7 @@ type SelectedDayPanelProps = {
   state: AppState;
   onToggleEmployee: (employeeId: string) => void;
   onToggleEmployeesOpen: () => void;
+  employeesExtraContent?: React.ReactNode;
 };
 
 export function SelectedDayPanel({
@@ -37,6 +38,7 @@ export function SelectedDayPanel({
   state,
   onToggleEmployee,
   onToggleEmployeesOpen,
+  employeesExtraContent,
 }: SelectedDayPanelProps) {
   return (
     <View style={styles.section}>
@@ -147,6 +149,7 @@ export function SelectedDayPanel({
           )
         ) : null}
 
+        {employeesOpen && employeesExtraContent ? employeesExtraContent : null}
       </View>
     </View>
   );
