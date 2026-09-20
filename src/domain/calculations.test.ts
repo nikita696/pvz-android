@@ -172,6 +172,61 @@ describe('payroll calculators', () => {
     expect(salary.accrued).toBe(1250);
   });
 
+  it('calculates Nikita September balance as 5500 on September 21', () => {
+    const nikita = {
+      ...state.employees[0],
+      id: 'nikita',
+      name: 'Никита',
+      weekdayRate: 3000,
+      weekendRate: 2500,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+      ],
+    };
+    const sasha = {
+      ...state.employees[0],
+      id: 'sasha',
+      name: 'Саша',
+      color: '#123456',
+      weekdayRate: 3000,
+      weekendRate: 2500,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+      ],
+    };
+    const septemberState: AppState = {
+      ...state,
+      employees: [nikita, sasha, state.employees[1]],
+      shifts: [
+        { id: 'sep-20', employeeId: 'nikita', date: '2026-09-20' },
+        { id: 'sep-21', employeeId: 'nikita', date: '2026-09-21' },
+        { id: 'sep-25-n', employeeId: 'nikita', date: '2026-09-25' },
+        { id: 'sep-25-s', employeeId: 'sasha', date: '2026-09-25' },
+        { id: 'sep-22', employeeId: 'nikita', date: '2026-09-22' },
+      ],
+      payments: [
+        {
+          id: 'sep-payment',
+          employeeId: 'nikita',
+          amount: 11500,
+          paidAt: '2026-09-20',
+          kind: 'payment',
+          comment: 'СБП',
+        },
+      ],
+    };
+
+    const salary = calculateSalary(septemberState, nikita, '2026-09', '2026-09-21');
+
+    expect(getLatestPaymentDate(septemberState, 'nikita', '2026-09-21')).toBe('2026-09-20');
+    expect(salary.workedShifts).toBe(2);
+    expect(salary.accrued).toBe(5500);
+    expect(salary.due).toBe(5500);
+  });
+
+
   it('checks if a shift is already marked', () => {
     expect(hasShift(state, 'emp-1', '2026-05-02')).toBe(true);
     expect(hasShift(state, 'emp-1', '2026-05-04')).toBe(false);
