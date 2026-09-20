@@ -1055,23 +1055,24 @@ export default function AppRoot() {
               ))}
             </View>
 
-            <SelectedDayPanel
-              activeEmployees={activeEmployees}
-              expandedEmployees={expandedSelectedDayEmployees}
-              employeesOpen={selectedDayEmployeesOpen}
-              selectedDate={selectedDate}
-              selectedDateLabel={selectedDateLabel}
-              selectedMonth={selectedMonth}
-              shiftCount={selectedDayShifts.length}
-              state={state}
-              onToggleEmployee={toggleSelectedDayEmployee}
-              onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
-            />
-            <View
-              style={styles.employeeArchivePanel}
-              testID="employee-archive-panel"
-              accessibilityLabel="Управление архивом сотрудников"
-            >
+            <View style={styles.employeeOverviewBlock} testID="employee-overview-block">
+              <SelectedDayPanel
+                activeEmployees={activeEmployees}
+                expandedEmployees={expandedSelectedDayEmployees}
+                employeesOpen={selectedDayEmployeesOpen}
+                selectedDate={selectedDate}
+                selectedDateLabel={selectedDateLabel}
+                selectedMonth={selectedMonth}
+                shiftCount={selectedDayShifts.length}
+                state={state}
+                onToggleEmployee={toggleSelectedDayEmployee}
+                onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
+              />
+              <View
+                style={styles.employeeArchivePanel}
+                testID="employee-archive-panel"
+                accessibilityLabel="Управление архивом сотрудников"
+              >
               <View style={styles.employeeArchiveHeader}>
                 <View style={styles.employeeArchiveTitleRow}>
                   <Archive size={18} color={colors.muted} />
@@ -1153,6 +1154,7 @@ export default function AppRoot() {
                   </View>
                 </View>
               ) : null}
+              </View>
             </View>
           </ScrollView>
         )}
@@ -2519,12 +2521,21 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  employeeArchivePanel: {
-    borderRadius: 18,
+  employeeOverviewBlock: {
+    borderRadius: 20,
     backgroundColor: colors.panel,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
+    padding: 12,
+    gap: 14,
+    overflow: 'hidden',
+  },
+  employeeArchivePanel: {
+    borderRadius: 14,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
     gap: 12,
   },
   employeeArchiveHeader: {
