@@ -127,8 +127,21 @@ export function getShiftCountByDate(state: AppState, date: string): number {
 
 
 export function getEmployeeShiftRate(employee: Employee, date: string): number {
-  const weekdayRate = employee.weekdayRate ?? employee.dailyRate;
-  const weekendRate = employee.weekendRate ?? employee.dailyRate;
+  let weekdayRate = employee.weekdayRate ?? employee.dailyRate;
+  let weekendRate = employee.weekendRate ?? employee.dailyRate;
+
+  const history = [...(employee.rateHistory ?? [])].sort((a, b) =>
+    a.effectiveFrom.localeCompare(b.effectiveFrom),
+  );
+
+  for (const change of history) {
+    if (change.effectiveFrom > date) {
+      break;
+    }
+    weekdayRate = change.weekdayRate;
+    weekendRate = change.weekendRate;
+  }
+
   const [year, month, day] = date.split('-').map(Number);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   return weekday === 0 || weekday === 6 ? weekendRate : weekdayRate;
