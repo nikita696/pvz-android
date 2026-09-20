@@ -6,9 +6,10 @@ import {
   getDayNoteByDate,
   getEmployeeFirstShiftDate,
   getEmployeeMonthShiftCounts,
-  getShiftFraction,
   getEmployeeWorkedShiftCount,
+  getLatestPaymentDate,
   getShiftCountByDate,
+  getShiftFraction,
   hasShift,
 } from './calculations';
 import type { AppState } from './types';
@@ -95,20 +96,27 @@ const state: AppState = {
   ],
 };
 
-describe('minimal payroll formula', () => {
-  it('uses worked shifts through today times daily rate minus current payouts and deductions', () => {
+describe('payroll calculators', () => {
+  it('calculates the unpaid balance from the latest payout through the cutoff date', () => {
     const salary = calculateSalary(state, state.employees[0], '2026-05', '2026-05-11');
 
-    expect(salary.workedShifts).toBe(4);
-    expect(salary.dailyRate).toBe(2500);
-    expect(salary.accrued).toBe(10000);
-    expect(salary.paid).toBe(1700);
+    expect(getLatestPaymentDate(state, 'emp-1', '2026-05-11')).toBe('2026-05-10');
+    expect(salary.workedShifts).toBe(1);
+    expect(salary.accrued).toBe(2500);
+    expect(salary.paid).toBe(0);
     expect(salary.deductions).toBe(300);
-    expect(salary.paidAndDeductions).toBe(2000);
-    expect(salary.due).toBe(8000);
+    expect(salary.paidAndDeductions).toBe(300);
+    expect(salary.due).toBe(2200);
   });
 
-  it('uses the rate that was effective on each shift date', () => {
+  it('does not include shifts outside the selected month or after the cutoff date', () => {
+    const salary = calculateSalary(state, state.employees[0], '2026-05', '2026-05-11');
+
+    expect(salary.workedShifts).toBe(1);
+    expect(salary.accrued).toBe(2500);
+  });
+
+  it('uses the rate that was effective on each unpaid shift date', () => {
     const employee = {
       ...state.employees[0],
       weekdayRate: 3000,
@@ -146,12 +154,22 @@ describe('minimal payroll formula', () => {
     };
 
     expect(getShiftFraction(doubleShiftState, doubleShiftState.shifts[2])).toBe(0.5);
-    expect(getEmployeeMonthShiftCounts(doubleShiftState, 'emp-1', '2026-05', '2026-05-11')).toEqual({
+    expect(
+      getEmployeeMonthShiftCounts(doubleShiftState, 'emp-1', '2026-05', '2026-05-11'),
+    ).toEqual({
       total: 3.5,
       worked: 2.5,
     });
-    expect(calculateSalary(doubleShiftState, doubleShiftState.employees[0], '2026-05', '2026-05-11').workedShifts).toBe(3.5);
-    expect(calculateSalary(doubleShiftState, doubleShiftState.employees[0], '2026-05', '2026-05-11').accrued).toBe(8750);
+
+    const salary = calculateSalary(
+      doubleShiftState,
+      doubleShiftState.employees[0],
+      '2026-05',
+      '2026-05-11',
+    );
+
+    expect(salary.workedShifts).toBe(0.5);
+    expect(salary.accrued).toBe(1250);
   });
 
   it('checks if a shift is already marked', () => {
@@ -159,8 +177,8 @@ describe('minimal payroll formula', () => {
     expect(hasShift(state, 'emp-1', '2026-05-04')).toBe(false);
   });
 
-  it('sums total employee debt', () => {
-    expect(calculateTotalDue(state, '2026-05', '2026-05-11')).toBe(8000);
+  it('sums total employee debt using the same unpaid-balance formula', () => {
+    expect(calculateTotalDue(state, '2026-05', '2026-05-11')).toBe(2200);
   });
 
   it('ignores archived employees in calendar shift counters', () => {
