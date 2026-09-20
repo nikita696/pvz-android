@@ -496,10 +496,26 @@ export async function addEmployee(workspaceId: string, name: string, weekdayRate
   await ensureSchema();
   const selectedColor = getValidEmployeeColor(color ?? null) ?? await getNextEmployeeColor(sql, workspaceId);
 
-  await sql`
-    insert into employees (id, workspace_id, name, daily_rate, weekday_rate, weekend_rate, color)
-    values (${crypto.randomUUID()}, ${workspaceId}, ${name}, ${Math.round(weekdayRate)}, ${Math.round(weekdayRate)}, ${Math.round(weekendRate)}, ${selectedColor})
-  `;
+  const employeeId = crypto.randomUUID();
+  await sql.transaction((transaction) => [
+    transaction`
+      insert into employees (id, workspace_id, name, daily_rate, weekday_rate, weekend_rate, color)
+      values (${employeeId}, ${workspaceId}, ${name}, ${Math.round(weekdayRate)}, ${Math.round(weekdayRate)}, ${Math.round(weekendRate)}, ${selectedColor})
+    `,
+    transaction`
+      insert into employee_rate_history (
+        id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+      )
+      values (
+        ${crypto.randomUUID()},
+        ${workspaceId},
+        ${employeeId},
+        date '1970-01-01',
+        ${Math.round(weekdayRate)},
+        ${Math.round(weekendRate)}
+      )
+    `,
+  ]);
 }
 
 export async function updateEmployeeRates(
@@ -617,7 +633,7 @@ export async function deleteArchivedEmployee(workspaceId: string, employeeId: st
   await sql`delete from employee_deletion_undos where expires_at <= now()`;
   const deletedRows = await sql`
     with target_employee as (
-      select id, name, daily_rate, color, active, created_at
+      select id, name, daily_rate, weekday_rate, weekend_rate, color, active, created_at
       from employees
       where id = ${employeeId}
         and workspace_id = ${workspaceId}
@@ -633,6 +649,18 @@ export async function deleteArchivedEmployee(workspaceId: string, employeeId: st
             'id', employee.id,
             'name', employee.name,
             'dailyRate', employee.daily_rate,
+            'weekdayRate', employee.weekday_rate,
+            'weekendRate', employee.weekend_rate,
+            'rateHistory', coalesce((
+              select jsonb_agg(jsonb_build_object(
+                'effectiveFrom', to_char(rate.effective_from, 'YYYY-MM-DD'),
+                'weekdayRate', rate.weekday_rate,
+                'weekendRate', rate.weekend_rate
+              ) order by rate.effective_from asc, rate.created_at asc)
+              from employee_rate_history as rate
+              where rate.workspace_id = ${workspaceId}
+                and rate.employee_id = employee.id
+            ), '[]'::jsonb),
             'color', employee.color,
             'active', employee.active,
             'createdAt', employee.created_at
@@ -710,17 +738,45 @@ export async function restoreDeletedEmployee(workspaceId: string, undoToken: str
 
   await sql.transaction((transaction) => [
     transaction`
-      insert into employees (id, workspace_id, name, daily_rate, color, active, created_at)
+      insert into employees (
+        id, workspace_id, name, daily_rate, weekday_rate, weekend_rate, color, active, created_at
+      )
       values (
         ${snapshot.employee.id},
         ${workspaceId},
         ${snapshot.employee.name},
         ${snapshot.employee.dailyRate},
+        ${snapshot.employee.weekdayRate ?? snapshot.employee.dailyRate},
+        ${snapshot.employee.weekendRate ?? snapshot.employee.dailyRate},
         ${snapshot.employee.color},
         ${snapshot.employee.active},
         ${snapshot.employee.createdAt}
       )
       on conflict (id) do nothing
+    `,
+    transaction`
+      insert into employee_rate_history (
+        id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+      )
+      select
+        ${crypto.randomUUID()},
+        ${workspaceId},
+        ${snapshot.employee.id},
+        item.effective_from,
+        item.weekday_rate,
+        item.weekend_rate
+      from jsonb_to_recordset(cast(${JSON.stringify((snapshot.employee.rateHistory ?? []).map((rate) => ({
+        effective_from: rate.effectiveFrom,
+        weekday_rate: rate.weekdayRate,
+        weekend_rate: rate.weekendRate,
+      })))} as jsonb)) as item(
+        effective_from date,
+        weekday_rate integer,
+        weekend_rate integer
+      )
+      on conflict (employee_id, effective_from) do update
+      set weekday_rate = excluded.weekday_rate,
+          weekend_rate = excluded.weekend_rate
     `,
     transaction`
       insert into shifts (id, workspace_id, employee_id, work_date)
@@ -978,6 +1034,9 @@ export async function importWorkspaceState(workspaceId: string, value: unknown) 
     id: employee.id,
     name: employee.name,
     daily_rate: employee.dailyRate,
+    weekday_rate: employee.weekdayRate,
+    weekend_rate: employee.weekendRate,
+    rate_history: employee.rateHistory,
     color: employee.color,
     active: employee.active,
     created_at: employee.createdAt,
@@ -1022,6 +1081,9 @@ export async function importWorkspaceState(workspaceId: string, value: unknown) 
         id text,
         name text,
         daily_rate integer,
+        weekday_rate integer,
+        weekend_rate integer,
+        rate_history jsonb,
         color text,
         active boolean,
         created_at timestamptz
