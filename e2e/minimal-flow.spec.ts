@@ -215,10 +215,24 @@ test('invite code connects to the private PVZ workspace', async ({ page }) => {
   await expect(page.getByText(LOCATION)).toBeVisible();
   await page.getByTestId('open-employees').click();
   await expect(page.getByTestId('employee-name')).toBeVisible();
+  await expect(page.getByTestId('employee-rate')).toBeVisible();
+  await expect(page.getByTestId('employee-weekend-rate')).toBeVisible();
   await expect(page.getByTestId(`archive-employee-${NICK}`)).toHaveCount(0);
   await page.getByTestId('close-employees').click();
-  await expect(page.getByTestId('employee-archive-panel')).toBeVisible();
-  await expect(page.getByTestId(`archive-employee-${NICK}`)).toBeVisible();
+
+  const employeeOverview = page.getByTestId('employee-overview-block');
+  const employeeArchive = page.getByTestId('employee-archive-panel');
+  await expect(employeeOverview).toBeVisible();
+  await expect(employeeArchive).toBeVisible();
+  await expect(employeeOverview.getByTestId(`archive-employee-${NICK}`)).toBeVisible();
+
+  const overviewBox = await employeeOverview.boundingBox();
+  const archiveBox = await employeeArchive.boundingBox();
+  expect(overviewBox).not.toBeNull();
+  expect(archiveBox).not.toBeNull();
+  expect(archiveBox!.x).toBeGreaterThanOrEqual(overviewBox!.x);
+  expect(archiveBox!.x + archiveBox!.width).toBeLessThanOrEqual(overviewBox!.x + overviewBox!.width + 1);
+  expect(archiveBox!.y).toBeGreaterThan(overviewBox!.y);
   await page.reload();
   await expect(page.getByText(LOCATION)).toBeVisible();
   await expect(page.getByTestId('employee-archive-panel')).toBeVisible();
