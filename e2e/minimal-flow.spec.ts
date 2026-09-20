@@ -750,3 +750,91 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText('\u0420\u0435\u0437\u0435\u0440\u0432\u043d\u0430\u044f \u043a\u043e\u043f\u0438\u044f \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0430. \u041f\u0440\u0435\u0434\u044b\u0434\u0443\u0449\u0435\u0435 \u0441\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e \u0432 Neon.')).toBeVisible();
   expect(serverState.location.name).toBe('\u041f\u0412\u0417 \u0438\u0437 \u043a\u043e\u043f\u0438\u0438');
 });
+
+test('real September 21 payroll snapshot shows 5500 ₽ in the salary UI', async ({ page }) => {
+  await page.addInitScript(() => {
+    const fixedNow = '2026-09-21T12:00:00.000Z';
+    const RealDate = Date;
+    class MockDate extends RealDate {
+      constructor(...args: ConstructorParameters<typeof Date>) {
+        super(...(args.length ? args : [fixedNow]));
+      }
+      static now() {
+        return new RealDate(fixedNow).getTime();
+      }
+    }
+    window.Date = MockDate as DateConstructor;
+  });
+  await page.addInitScript(({ key, token }) => {
+    window.localStorage.setItem(key, token);
+  }, { key: TOKEN_KEY, token: TEST_TOKEN });
+
+  const nikitaId = '743a27fb-d1cd-46cd-8bac-d106b5b1b996';
+  const sashaId = '8ad20885-a3fe-4b7a-9951-8bfcac2e42e9';
+  const state: AppState = {
+    location: { id: 'main', name: LOCATION },
+    employees: [
+      {
+        id: nikitaId,
+        name: NICK,
+        dailyRate: 3000,
+        weekdayRate: 3000,
+        weekendRate: 2500,
+        rateHistory: [
+          { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+          { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+        ],
+        color: '#a8d5ba',
+        active: true,
+        createdAt: '2026-05-01T00:00:00.000Z',
+      },
+      {
+        id: sashaId,
+        name: 'Саша',
+        dailyRate: 3000,
+        weekdayRate: 3000,
+        weekendRate: 2500,
+        rateHistory: [
+          { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+          { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+        ],
+        color: '#f0dd92',
+        active: true,
+        createdAt: '2026-05-01T00:00:00.000Z',
+      },
+    ],
+    shifts: [
+      ...[
+        '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-06', '2026-09-07',
+        '2026-09-08', '2026-09-09', '2026-09-13', '2026-09-14', '2026-09-15',
+        '2026-09-16', '2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23',
+        '2026-09-25', '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30',
+      ].map((date, index) => ({ id: `n-${index}`, employeeId: nikitaId, date })),
+      ...[
+        '2026-09-04', '2026-09-05', '2026-09-10', '2026-09-11', '2026-09-12',
+        '2026-09-17', '2026-09-18', '2026-09-19', '2026-09-24', '2026-09-25',
+        '2026-09-26',
+      ].map((date, index) => ({ id: `s-${index}`, employeeId: sashaId, date })),
+    ],
+    payments: [
+      { id: 'p-0906', employeeId: nikitaId, amount: 12500, paidAt: '2026-09-06', kind: 'payment', comment: 'СБП' },
+      { id: 'p-0912', employeeId: nikitaId, amount: 2500, paidAt: '2026-09-12', kind: 'payment', comment: 'СБП' },
+      { id: 'p-0913a', employeeId: nikitaId, amount: 7500, paidAt: '2026-09-13', kind: 'payment', comment: 'СБП' },
+      { id: 'p-0913b', employeeId: nikitaId, amount: 7500, paidAt: '2026-09-13', kind: 'payment', comment: 'СБП' },
+      { id: 'p-0920', employeeId: nikitaId, amount: 11500, paidAt: '2026-09-20', kind: 'payment', comment: 'Спб (будни по 3000₽)' },
+    ],
+    dayNotes: [],
+  };
+
+  await page.route('**/api/state', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state) });
+  });
+
+  await page.goto('/');
+  await expect(page.getByText(LOCATION)).toBeVisible();
+  await expect(page.getByText('Остаток к выплате')).toBeVisible();
+  await expect(page.getByText(`5 500 ${RUBLE}`, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(NICK, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('2 смен · начислено 5 500 ₽ − 0 ₽', { exact: true })).toBeVisible();
+  await expect(page.getByText('К выплате').first()).toBeVisible();
+});
