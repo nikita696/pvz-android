@@ -154,6 +154,8 @@ export async function ensureSchema() {
       id text primary key,
       name text not null,
       daily_rate integer not null check (daily_rate >= 0),
+      weekday_rate integer,
+      weekend_rate integer,
       active boolean not null default true,
       created_at timestamptz not null default now()
     )
@@ -190,6 +192,20 @@ export async function ensureSchema() {
   await addWorkspaceColumn(sql, 'shifts', defaultWorkspaceId);
   await addWorkspaceColumn(sql, 'salary_payments', defaultWorkspaceId);
   await addWorkspaceColumn(sql, 'day_notes', defaultWorkspaceId);
+  await sql`
+    alter table employees
+    add column if not exists weekday_rate integer
+  `;
+  await sql`
+    alter table employees
+    add column if not exists weekend_rate integer
+  `;
+  await sql`
+    update employees
+    set weekday_rate = coalesce(weekday_rate, daily_rate),
+        weekend_rate = coalesce(weekend_rate, daily_rate)
+    where weekday_rate is null or weekend_rate is null
+  `;
   await sql`
     alter table employees
     add column if not exists color text
@@ -352,7 +368,7 @@ export async function getState(workspaceId: string): Promise<AppState> {
       limit 1
     `,
     sql`
-      select id, name, daily_rate, color, active, created_at
+      select id, name, daily_rate, weekday_rate, weekend_rate, color, active, created_at
       from employees
       where workspace_id = ${workspaceId}
       order by active desc, created_at asc
@@ -393,6 +409,8 @@ export async function getState(workspaceId: string): Promise<AppState> {
       id: String(row.id),
       name: String(row.name),
       dailyRate: Number(row.daily_rate),
+      weekdayRate: Number(row.weekday_rate ?? row.daily_rate),
+      weekendRate: Number(row.weekend_rate ?? row.daily_rate),
       color: getEmployeeColor(String(row.id), typeof row.color === 'string' ? row.color : null),
       active: Boolean(row.active),
       createdAt: new Date(String(row.created_at)).toISOString(),
@@ -418,15 +436,30 @@ export async function getState(workspaceId: string): Promise<AppState> {
   };
 }
 
-export async function addEmployee(workspaceId: string, name: string, dailyRate: number, color?: string) {
+export async function addEmployee(workspaceId: string, name: string, weekdayRate: number, weekendRate: number, color?: string) {
   const sql = getSql();
   await ensureSchema();
   const selectedColor = getValidEmployeeColor(color ?? null) ?? await getNextEmployeeColor(sql, workspaceId);
 
   await sql`
-    insert into employees (id, workspace_id, name, daily_rate, color)
-    values (${crypto.randomUUID()}, ${workspaceId}, ${name}, ${Math.round(dailyRate)}, ${selectedColor})
+    insert into employees (id, workspace_id, name, daily_rate, weekday_rate, weekend_rate, color)
+    values (${crypto.randomUUID()}, ${workspaceId}, ${name}, ${Math.round(weekdayRate)}, ${Math.round(weekdayRate)}, ${Math.round(weekendRate)}, ${selectedColor})
   `;
+}
+
+export async function updateEmployeeRates(workspaceId: string, employeeId: string, weekdayRate: number, weekendRate: number) {
+  const sql = getSql();
+  await ensureSchema();
+  const rows = await sql`
+    update employees
+    set weekday_rate = ${Math.round(weekdayRate)},
+        weekend_rate = ${Math.round(weekendRate)},
+        daily_rate = ${Math.round(weekdayRate)}
+    where id = ${employeeId}
+      and workspace_id = ${workspaceId}
+    returning id
+  `;
+  if (!rows.length) throw new Error('BAD_REQUEST');
 }
 
 export async function updateEmployeeColor(workspaceId: string, employeeId: string, color: string) {
