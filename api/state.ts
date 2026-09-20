@@ -8,6 +8,7 @@ import {
   addEmployee,
   addPayment,
   archiveEmployee,
+  restoreArchivedEmployee,
   deletePayment,
   deleteArchivedEmployee,
   getState,
@@ -166,6 +167,15 @@ async function applyAction(workspaceId: string, body: ApiAction) {
     }
 
     await archiveEmployee(workspaceId, body.employeeId);
+    return;
+  }
+
+  if (body.action === 'restoreArchivedEmployee') {
+    if (!body.employeeId) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await restoreArchivedEmployee(workspaceId, body.employeeId);
     return;
   }
 
