@@ -1125,8 +1125,14 @@ export async function importWorkspaceState(workspaceId: string, value: unknown) 
       values (${locationRowId(workspaceId)}, ${workspaceId}, ${nextState.location.name})
     `,
     transaction`
-      insert into employees (id, workspace_id, name, daily_rate, color, active, created_at)
-      select item.id, ${workspaceId}, item.name, item.daily_rate, item.color, item.active, item.created_at
+      insert into employees (
+        id, workspace_id, name, daily_rate, weekday_rate, weekend_rate, color, active, created_at
+      )
+      select
+        item.id, ${workspaceId}, item.name, item.daily_rate,
+        coalesce(item.weekday_rate, item.daily_rate),
+        coalesce(item.weekend_rate, item.daily_rate),
+        item.color, item.active, item.created_at
       from jsonb_to_recordset(cast(${employeesJson} as jsonb)) as item(
         id text,
         name text,
