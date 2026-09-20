@@ -307,13 +307,13 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
           {
             id: employeeId,
             name: action.name,
-            dailyRate: action.weekdayRate,
-            weekdayRate: action.weekdayRate,
-            weekendRate: action.weekendRate,
+            dailyRate: action.weekdayRate ?? action.dailyRate ?? 0,
+            weekdayRate: action.weekdayRate ?? action.dailyRate ?? 0,
+            weekendRate: action.weekendRate ?? action.dailyRate ?? 0,
             rateHistory: [{
               effectiveFrom: '1970-01-01',
-              weekdayRate: action.weekdayRate,
-              weekendRate: action.weekendRate,
+              weekdayRate: action.weekdayRate ?? action.dailyRate ?? 0,
+              weekendRate: action.weekendRate ?? action.dailyRate ?? 0,
             }],
             color: '#f0dd92',
             active: true,
