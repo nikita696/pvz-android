@@ -80,6 +80,7 @@ type DialogName =
   | 'editPayment'
   | 'employeePayments'
   | 'employees'
+  | 'employeeRates'
   | 'dayNote'
   | 'location'
   | 'payment'
@@ -135,7 +136,10 @@ export default function AppRoot() {
   const [expandedPaymentMonths, setExpandedPaymentMonths] = useState<Record<string, boolean>>({});
   const [paymentToEditId, setPaymentToEditId] = useState('');
   const [paymentToDeleteId, setPaymentToDeleteId] = useState('');
-  const [dailyRate, setDailyRate] = useState('2500');
+  const [weekdayRate, setWeekdayRate] = useState('2500');
+  const [weekendRate, setWeekendRate] = useState('2500');
+  const [employeeRatesId, setEmployeeRatesId] = useState<string | null>(null);
+  const [rateEffectiveFromText, setRateEffectiveFromText] = useState(formatDate(TODAY));
   const [paymentEmployeeId, setPaymentEmployeeId] = useState('');
   const [paymentKind, setPaymentKind] = useState<PaymentKind>('payment');
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -431,22 +435,79 @@ export default function AppRoot() {
   }
 
   async function addEmployee() {
-    const normalizedRate = dailyRate.trim();
-    const rate = Number(normalizedRate);
+    const normalizedWeekdayRate = weekdayRate.trim();
+    const normalizedWeekendRate = weekendRate.trim();
+    const weekday = Number(normalizedWeekdayRate);
+    const weekend = Number(normalizedWeekendRate);
 
-    if (!employeeName.trim() || !normalizedRate || !Number.isFinite(rate) || rate < 0) {
-      setError('Укажи имя и ставку от 0 ₽ в день.');
+    if (
+      !employeeName.trim() ||
+      !normalizedWeekdayRate ||
+      !normalizedWeekendRate ||
+      !Number.isFinite(weekday) ||
+      weekday < 0 ||
+      !Number.isFinite(weekend) ||
+      weekend < 0
+    ) {
+      setError('Укажи имя и обе ставки от 0 ₽.');
       return;
     }
 
-    const saved = await mutate({ action: 'addEmployee', name: employeeName.trim(), dailyRate: rate });
+    const saved = await mutate({
+      action: 'addEmployee',
+      name: employeeName.trim(),
+      weekdayRate: weekday,
+      weekendRate: weekend,
+    });
     if (!saved) {
       return;
     }
 
     setEmployeeName('');
-    setDailyRate('2500');
+    setWeekdayRate('2500');
+    setWeekendRate('2500');
     setDialog(null);
+  }
+
+  function openEmployeeRates(employee: Employee) {
+    setEmployeeRatesId(employee.id);
+    setWeekdayRate(String(employee.weekdayRate ?? employee.dailyRate));
+    setWeekendRate(String(employee.weekendRate ?? employee.dailyRate));
+    setRateEffectiveFromText(formatDate(TODAY));
+    setError('');
+    setDialog('employeeRates');
+  }
+
+  async function saveEmployeeRates() {
+    const employee = state.employees.find((item) => item.id === employeeRatesId);
+    const weekday = Number(weekdayRate.trim());
+    const weekend = Number(weekendRate.trim());
+    const effectiveFrom = parseDateInput(rateEffectiveFromText);
+
+    if (
+      !employee ||
+      !Number.isFinite(weekday) ||
+      weekday < 0 ||
+      !Number.isFinite(weekend) ||
+      weekend < 0 ||
+      !effectiveFrom
+    ) {
+      setError('Укажи дату и обе ставки от 0 ₽.');
+      return;
+    }
+
+    const saved = await mutate({
+      action: 'updateEmployeeRates',
+      employeeId: employee.id,
+      weekdayRate: weekday,
+      weekendRate: weekend,
+      effectiveFrom,
+    });
+
+    if (saved) {
+      setDialog('employees');
+      setEmployeeRatesId(null);
+    }
   }
 
   function openLocationDialog() {
@@ -1157,10 +1218,21 @@ export default function AppRoot() {
                     <EmployeeAvatar name={employee.name} color={employee.color} />
                     <View>
                       <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
-                      <Text style={styles.muted}>{formatMoney(employee.dailyRate)} в день</Text>
+                      <Text style={styles.muted}>
+                        Будни {formatMoney(employee.weekdayRate ?? employee.dailyRate)} · выхи {formatMoney(employee.weekendRate ?? employee.dailyRate)}
+                      </Text>
                     </View>
                   </View>
-                  <Pressable
+                  <View style={styles.employeeManagerActions}>
+                    <Pressable
+                      style={styles.smallButton}
+                      onPress={() => openEmployeeRates(employee)}
+                      testID={`edit-employee-rates-${employee.name}`}
+                    >
+                      <PencilLine size={15} color={colors.accentText} />
+                      <Text style={styles.smallButtonText}>Ставки</Text>
+                    </Pressable>
+                    <Pressable
                     style={styles.archiveButton}
                     onPress={() => void archiveEmployee(employee.id)}
                     hitSlop={8}
@@ -1168,7 +1240,8 @@ export default function AppRoot() {
                   >
                     <Archive size={16} color={colors.accentText} />
                     <Text style={styles.archiveButtonText}>В архив</Text>
-                  </Pressable>
+                    </Pressable>
+                  </View>
                 </View>
               ))
             ) : (
@@ -1203,16 +1276,65 @@ export default function AppRoot() {
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
           <View style={styles.employeeRateField}>
             <Field
-              label="Ставка в день, ₽"
-              value={dailyRate}
-              onChangeText={setDailyRate}
+              label="Будни, ₽"
+              value={weekdayRate}
+              onChangeText={setWeekdayRate}
               keyboardType="numeric"
               testID="employee-rate"
+            />
+            <Field
+              label="Выходные, ₽"
+              value={weekendRate}
+              onChangeText={setWeekendRate}
+              keyboardType="numeric"
+              testID="employee-weekend-rate"
             />
             <Text style={styles.employeeRateHint}>Для владельца ПВЗ можно указать 0 ₽.</Text>
           </View>
           <Pressable style={styles.primaryButton} onPress={addEmployee} testID="save-employee">
             <Text style={styles.primaryButtonText}>Добавить</Text>
+          </Pressable>
+        </Dialog>
+
+        <Dialog
+          visible={dialog === 'employeeRates' && Boolean(employeeRatesId)}
+          title={state.employees.find((employee) => employee.id === employeeRatesId)?.name ?? 'Ставки'}
+          onClose={() => {
+            setEmployeeRatesId(null);
+            setDialog('employees');
+          }}
+        >
+          <Text style={styles.muted}>
+            Старые смены останутся по старым ставкам. Дата ниже определяет, с какой даты начинается изменение.
+          </Text>
+          <Field
+            label="Действует с, ДД.ММ.ГГГГ"
+            value={rateEffectiveFromText}
+            onChangeText={setRateEffectiveFromText}
+            placeholder="13.09.2026"
+            testID="employee-rate-effective-from"
+          />
+          <Field
+            label="Будни, ₽"
+            value={weekdayRate}
+            onChangeText={setWeekdayRate}
+            keyboardType="numeric"
+            testID="edit-employee-weekday-rate"
+          />
+          <Field
+            label="Выходные, ₽"
+            value={weekendRate}
+            onChangeText={setWeekendRate}
+            keyboardType="numeric"
+            testID="edit-employee-weekend-rate"
+          />
+          <Pressable
+            disabled={saving}
+            style={[styles.primaryButton, saving && styles.disabledButton]}
+            onPress={() => void saveEmployeeRates()}
+            testID="save-employee-rates"
+          >
+            <Text style={styles.primaryButtonText}>Сохранить ставки</Text>
           </Pressable>
         </Dialog>
 
@@ -1597,7 +1719,7 @@ function SalaryCard({
           <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
         </View>
         <Text style={styles.muted}>
-          {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − {formatMoney(salary.paidAndDeductions)}
+          {salary.workedShifts} смен · начислено {formatMoney(salary.accrued)} − {formatMoney(salary.paidAndDeductions)}
         </Text>
         {salary.deductions > 0 ? (
           <Text style={styles.deductionLine}>Удержано {formatMoney(salary.deductions)}</Text>
@@ -2168,6 +2290,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  employeeManagerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   archiveButton: {
     minHeight: 34,

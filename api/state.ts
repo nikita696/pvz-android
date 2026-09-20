@@ -20,6 +20,7 @@ import {
   updateLocationName,
   updatePayment,
   updateEmployeeColor,
+  updateEmployeeRates,
 } from './_db';
 import { EMPLOYEE_COLOR_PALETTE, type ApiAction } from '../src/domain/types';
 import { InvalidBackupError } from '../src/domain/backup';
@@ -95,7 +96,18 @@ async function applyAction(workspaceId: string, body: ApiAction) {
       ? color
       : undefined;
 
-    if (!body.name.trim() || !Number.isFinite(body.dailyRate) || body.dailyRate < 0) {
+    const weekdayRate = body.weekdayRate ?? body.dailyRate;
+    const weekendRate = body.weekendRate ?? body.dailyRate;
+
+    if (
+      !body.name.trim() ||
+      typeof weekdayRate !== 'number' ||
+      !Number.isFinite(weekdayRate) ||
+      weekdayRate < 0 ||
+      typeof weekendRate !== 'number' ||
+      !Number.isFinite(weekendRate) ||
+      weekendRate < 0
+    ) {
       throw new Error('BAD_REQUEST');
     }
 
@@ -103,7 +115,7 @@ async function applyAction(workspaceId: string, body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await addEmployee(workspaceId, body.name.trim(), body.dailyRate, validColor);
+    await addEmployee(workspaceId, body.name.trim(), weekdayRate, weekendRate, validColor);
     return;
   }
 
@@ -113,6 +125,26 @@ async function applyAction(workspaceId: string, body: ApiAction) {
     }
 
     await updateLocationName(workspaceId, body.name.trim());
+    return;
+  }
+
+  if (body.action === 'updateEmployeeRates') {
+    if (
+      !body.employeeId ||
+      !Number.isFinite(body.weekdayRate) || body.weekdayRate < 0 ||
+      !Number.isFinite(body.weekendRate) || body.weekendRate < 0 ||
+      !isValidIsoDate(body.effectiveFrom)
+    ) {
+      throw new Error('BAD_REQUEST');
+    }
+
+    await updateEmployeeRates(
+      workspaceId,
+      body.employeeId,
+      body.weekdayRate,
+      body.weekendRate,
+      body.effectiveFrom,
+    );
     return;
   }
 

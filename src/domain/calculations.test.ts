@@ -19,6 +19,9 @@ const state: AppState = {
       id: 'emp-1',
       name: 'Анна',
       dailyRate: 2500,
+      weekdayRate: 2500,
+      weekendRate: 2500,
+      rateHistory: [{ effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 }],
       color: '#a8d5ba',
       active: true,
       createdAt: '2026-05-01T00:00:00.000Z',
@@ -102,6 +105,27 @@ describe('minimal payroll formula', () => {
     expect(salary.deductions).toBe(300);
     expect(salary.paidAndDeductions).toBe(2000);
     expect(salary.due).toBe(8000);
+  });
+
+  it('uses the rate that was effective on each shift date', () => {
+    const employee = {
+      ...state.employees[0],
+      weekdayRate: 3000,
+      weekendRate: 3200,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-05-03', weekdayRate: 3000, weekendRate: 3200 },
+      ],
+    };
+
+    const historicalState: AppState = {
+      ...state,
+      employees: [employee, ...state.employees.slice(1)],
+    };
+
+    expect(calculateSalary(historicalState, employee, '2026-05', '2026-05-03').accrued).toBe(
+      2500 + 3200,
+    );
   });
 
   it('checks if a shift is already marked', () => {

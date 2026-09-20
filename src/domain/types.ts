@@ -13,10 +13,22 @@ export interface Location {
   name: string;
 }
 
+export interface EmployeeRateChange {
+  effectiveFrom: string;
+  weekdayRate: number;
+  weekendRate: number;
+}
+
 export interface Employee {
   id: string;
   name: string;
   dailyRate: number;
+  /** Rate for Monday-Friday. Falls back to dailyRate for old local data. */
+  weekdayRate?: number;
+  /** Rate for Saturday-Sunday. Falls back to dailyRate for old local data. */
+  weekendRate?: number;
+  /** Historical rates, ordered by effectiveFrom ascending. */
+  rateHistory?: EmployeeRateChange[];
   color: string;
   active: boolean;
   createdAt: string;
@@ -66,8 +78,8 @@ export interface SalarySummary {
 
 export type ApiAction =
   | { action: 'updateLocation'; name: string }
-  | { action: 'addEmployee'; name: string; dailyRate: number; color?: string }
-  | { action: 'updateEmployeeColor'; employeeId: string; color: string }
+  | { action: 'addEmployee'; name: string; weekdayRate?: number; weekendRate?: number; dailyRate?: number; color?: string }
+  | { action: 'updateEmployeeColor'; employeeId: string; color: string }\n  | { action: 'updateEmployeeRates'; employeeId: string; weekdayRate: number; weekendRate: number; effectiveFrom: string }
   | { action: 'toggleShift'; employeeId: string; date: string }
   | { action: 'saveDayNote'; date: string; comment: string }
   | {
