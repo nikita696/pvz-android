@@ -810,6 +810,25 @@ export async function restoreDeletedEmployee(workspaceId: string, undoToken: str
           weekend_rate = excluded.weekend_rate
     `,
     transaction`
+      insert into employee_rate_history (
+        id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+      )
+      select
+        ${crypto.randomUUID()},
+        ${workspaceId},
+        employee.id,
+        date '1970-01-01',
+        employee.weekday_rate,
+        employee.weekend_rate
+      from employees as employee
+      where employee.workspace_id = ${workspaceId}
+        and not exists (
+          select 1 from employee_rate_history as history
+          where history.employee_id = employee.id
+            and history.workspace_id = ${workspaceId}
+        )
+    `,
+    transaction`
       insert into shifts (id, workspace_id, employee_id, work_date)
       select item.id, ${workspaceId}, item.employee_id, item.work_date
       from jsonb_to_recordset(cast(${shiftsJson} as jsonb)) as item(
