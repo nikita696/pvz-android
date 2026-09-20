@@ -814,6 +814,10 @@ export default function AppRoot() {
     await mutate({ action: 'archiveEmployee', employeeId });
   }
 
+  async function restoreArchivedEmployee(employeeId: string) {
+    await mutate({ action: 'restoreArchivedEmployee', employeeId });
+  }
+
   function openDeleteEmployeeDialog(employeeId: string) {
     setEmployeeToDeleteId(employeeId);
     setDeleteConfirmationText('');
@@ -1214,18 +1218,20 @@ export default function AppRoot() {
             {activeEmployees.length ? (
               activeEmployees.map((employee) => (
                 <View key={employee.id} style={styles.employeeManagerRow}>
-                  <View style={styles.employeeTitleRow}>
-                    <EmployeeAvatar name={employee.name} color={employee.color} />
-                    <View>
-                      <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
-                      <Text style={styles.muted}>
-                        Будни {formatMoney(employee.weekdayRate ?? employee.dailyRate)} · выхи {formatMoney(employee.weekendRate ?? employee.dailyRate)}
-                      </Text>
+                  <View style={styles.employeeManagerHeader}>
+                    <View style={styles.employeeTitleRow}>
+                      <EmployeeAvatar name={employee.name} color={employee.color} />
+                      <View style={styles.employeeManagerInfo}>
+                        <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
+                        <Text style={styles.muted}>
+                          Будни {formatMoney(employee.weekdayRate ?? employee.dailyRate)} · выхи {formatMoney(employee.weekendRate ?? employee.dailyRate)}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                   <View style={styles.employeeManagerActions}>
                     <Pressable
-                      style={styles.smallButton}
+                      style={[styles.smallButton, styles.employeeManagerAction]}
                       onPress={() => openEmployeeRates(employee)}
                       testID={`edit-employee-rates-${employee.name}`}
                     >
@@ -1233,13 +1239,13 @@ export default function AppRoot() {
                       <Text style={styles.smallButtonText}>Ставки</Text>
                     </Pressable>
                     <Pressable
-                    style={styles.archiveButton}
-                    onPress={() => void archiveEmployee(employee.id)}
-                    hitSlop={8}
-                    testID={`archive-employee-${employee.name}`}
-                  >
-                    <Archive size={16} color={colors.accentText} />
-                    <Text style={styles.archiveButtonText}>В архив</Text>
+                      style={[styles.archiveButton, styles.employeeManagerAction]}
+                      onPress={() => void archiveEmployee(employee.id)}
+                      hitSlop={8}
+                      testID={`archive-employee-${employee.name}`}
+                    >
+                      <Archive size={16} color={colors.accentText} />
+                      <Text style={styles.archiveButtonText}>В архив</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1250,29 +1256,47 @@ export default function AppRoot() {
           </View>
           {archivedEmployees.length ? (
             <View style={styles.archiveSection}>
-              <Text style={styles.fieldLabel}>Архив</Text>
+              <View style={styles.archiveSectionHeader}>
+                <View style={styles.archiveSectionTitle}>
+                  <Text style={styles.fieldLabel}>Архив</Text>
+                  <Text style={styles.muted}>Сотрудники здесь не участвуют в новых сменах и расчёте зарплаты.</Text>
+                </View>
+              </View>
               {archivedEmployees.map((employee) => (
                 <View key={employee.id} style={styles.employeeManagerRow}>
-                  <View style={styles.employeeTitleRow}>
-                    <EmployeeAvatar name={employee.name} color={employee.color} muted />
-                    <View>
-                      <Text style={styles.employeeName}>{employee.name}</Text>
-                      <Text style={styles.muted}>Архивирован</Text>
+                  <View style={styles.employeeManagerHeader}>
+                    <View style={styles.employeeTitleRow}>
+                      <EmployeeAvatar name={employee.name} color={employee.color} muted />
+                      <View style={styles.employeeManagerInfo}>
+                        <Text style={styles.employeeName}>{employee.name}</Text>
+                        <Text style={styles.muted}>Архивирован</Text>
+                      </View>
                     </View>
                   </View>
-                  <Pressable
-                    style={styles.deleteTextButton}
-                    onPress={() => openDeleteEmployeeDialog(employee.id)}
-                    hitSlop={8}
-                    testID={`delete-archived-employee-${employee.name}`}
-                  >
-                    <Trash2 size={16} color={colors.dangerText} />
-                    <Text style={styles.deleteTextButtonText}>Удалить</Text>
-                  </Pressable>
+                  <View style={styles.employeeManagerActions}>
+                    <Pressable
+                      style={[styles.restoreButton, styles.employeeManagerAction]}
+                      onPress={() => void restoreArchivedEmployee(employee.id)}
+                      hitSlop={8}
+                      testID={`restore-archived-employee-${employee.name}`}
+                    >
+                      <RefreshCw size={15} color={colors.accentText} />
+                      <Text style={styles.archiveButtonText}>Вернуть</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.deleteTextButton, styles.employeeManagerAction]}
+                      onPress={() => openDeleteEmployeeDialog(employee.id)}
+                      hitSlop={8}
+                      testID={`delete-archived-employee-${employee.name}`}
+                    >
+                      <Trash2 size={15} color={colors.dangerText} />
+                      <Text style={styles.deleteTextButtonText}>Удалить</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
-          ) : null}
+          ) : null
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
           <View style={styles.employeeRateField}>
             <Field
@@ -2279,22 +2303,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   employeeManagerRow: {
-    minHeight: 58,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    padding: 12,
     backgroundColor: colors.panelSoft,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: 10,
+  },
+  employeeManagerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+    minWidth: 0,
+  },
+  employeeManagerInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
   },
   employeeManagerActions: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    alignItems: 'stretch',
+    gap: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  employeeManagerAction: {
+    flex: 1,
+    minWidth: 0,
   },
   archiveButton: {
     minHeight: 34,
@@ -2311,6 +2347,22 @@ const styles = StyleSheet.create({
     color: colors.accentText,
     fontSize: 11,
     fontWeight: '900',
+  },
+  restoreButton: {
+    minHeight: 40,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    backgroundColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  archiveSectionHeader: {
+    gap: 4,
+  },
+  archiveSectionTitle: {
+    gap: 3,
   },
   shiftStatus: {
     fontFamily: appFont,
