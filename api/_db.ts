@@ -161,6 +161,41 @@ export async function ensureSchema() {
     )
   `;
   await sql`
+    create table if not exists employee_rate_history (
+      id text primary key,
+      workspace_id text not null references workspaces(id) on delete cascade,
+      employee_id text not null references employees(id) on delete cascade,
+      effective_from date not null,
+      weekday_rate integer not null check (weekday_rate >= 0),
+      weekend_rate integer not null check (weekend_rate >= 0),
+      created_at timestamptz not null default now(),
+      unique(employee_id, effective_from)
+    )
+  `;
+  await sql`
+    create index if not exists employee_rate_history_lookup_idx
+    on employee_rate_history (workspace_id, employee_id, effective_from)
+  `;
+  await sql`
+    insert into employee_rate_history (
+      id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+    )
+    select
+      'rate-baseline-' || e.id,
+      e.workspace_id,
+      e.id,
+      date '1970-01-01',
+      coalesce(e.weekday_rate, e.daily_rate),
+      coalesce(e.weekend_rate, e.daily_rate)
+    from employees e
+    where not exists (
+      select 1 from employee_rate_history h
+      where h.employee_id = e.id
+        and h.workspace_id = e.workspace_id
+    )
+    on conflict (employee_id, effective_from) do nothing
+  `;
+  await sql`
     create table if not exists shifts (
       id text primary key,
       employee_id text not null references employees(id) on delete cascade,
@@ -359,7 +394,7 @@ export async function getState(workspaceId: string): Promise<AppState> {
   const sql = getSql();
   await ensureSchema();
 
-  const [locationRows, employeeRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
+  const [locationRows, employeeRows, rateRows, shiftRows, paymentRows, dayNoteRows] = await Promise.all([
     sql`
       select id, name
       from locations
@@ -372,6 +407,13 @@ export async function getState(workspaceId: string): Promise<AppState> {
       from employees
       where workspace_id = ${workspaceId}
       order by active desc, created_at asc
+    `,
+    sql`
+      select employee_id, to_char(effective_from, 'YYYY-MM-DD') as effective_from,
+             weekday_rate, weekend_rate
+      from employee_rate_history
+      where workspace_id = ${workspaceId}
+      order by employee_id asc, effective_from asc, created_at asc
     `,
     sql`
       select id, employee_id, to_char(work_date, 'YYYY-MM-DD') as work_date
@@ -400,6 +442,18 @@ export async function getState(workspaceId: string): Promise<AppState> {
     `;
   }
 
+  const rateHistoryByEmployee = new Map<string, { effectiveFrom: string; weekdayRate: number; weekendRate: number }[]>();
+  for (const row of rateRows) {
+    const employeeId = String(row.employee_id);
+    const history = rateHistoryByEmployee.get(employeeId) ?? [];
+    history.push({
+      effectiveFrom: String(row.effective_from),
+      weekdayRate: Number(row.weekday_rate),
+      weekendRate: Number(row.weekend_rate),
+    });
+    rateHistoryByEmployee.set(employeeId, history);
+  }
+
   return {
     location: {
       id: DEFAULT_LOCATION.id,
@@ -411,6 +465,7 @@ export async function getState(workspaceId: string): Promise<AppState> {
       dailyRate: Number(row.daily_rate),
       weekdayRate: Number(row.weekday_rate ?? row.daily_rate),
       weekendRate: Number(row.weekend_rate ?? row.daily_rate),
+      rateHistory: rateHistoryByEmployee.get(String(row.id)) ?? [],
       color: getEmployeeColor(String(row.id), typeof row.color === 'string' ? row.color : null),
       active: Boolean(row.active),
       createdAt: new Date(String(row.created_at)).toISOString(),
@@ -447,19 +502,60 @@ export async function addEmployee(workspaceId: string, name: string, weekdayRate
   `;
 }
 
-export async function updateEmployeeRates(workspaceId: string, employeeId: string, weekdayRate: number, weekendRate: number) {
+export async function updateEmployeeRates(
+  workspaceId: string,
+  employeeId: string,
+  weekdayRate: number,
+  weekendRate: number,
+  effectiveFrom: string,
+) {
   const sql = getSql();
   await ensureSchema();
-  const rows = await sql`
-    update employees
-    set weekday_rate = ${Math.round(weekdayRate)},
-        weekend_rate = ${Math.round(weekendRate)},
-        daily_rate = ${Math.round(weekdayRate)}
+  const employeeRows = await sql`
+    select id
+    from employees
     where id = ${employeeId}
       and workspace_id = ${workspaceId}
-    returning id
+    limit 1
   `;
-  if (!rows.length) throw new Error('BAD_REQUEST');
+  if (!employeeRows.length) throw new Error('BAD_REQUEST');
+
+  await sql`
+    insert into employee_rate_history (
+      id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+    )
+    values (
+      ${crypto.randomUUID()},
+      ${workspaceId},
+      ${employeeId},
+      ${effectiveFrom},
+      ${Math.round(weekdayRate)},
+      ${Math.round(weekendRate)}
+    )
+    on conflict (employee_id, effective_from) do update
+    set weekday_rate = excluded.weekday_rate,
+        weekend_rate = excluded.weekend_rate
+  `;
+
+  const latest = await sql`
+    select weekday_rate, weekend_rate
+    from employee_rate_history
+    where employee_id = ${employeeId}
+      and workspace_id = ${workspaceId}
+    order by effective_from desc, created_at desc
+    limit 1
+  `;
+
+  if (latest.length) {
+    await sql`
+      update employees
+      set weekday_rate = ${Number(latest[0].weekday_rate)},
+          weekend_rate = ${Number(latest[0].weekend_rate)},
+          daily_rate = ${Number(latest[0].weekday_rate)}
+      where id = ${employeeId}
+        and workspace_id = ${workspaceId}
+    `;
+  }
 }
 
 export async function updateEmployeeColor(workspaceId: string, employeeId: string, color: string) {
