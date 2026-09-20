@@ -1296,7 +1296,7 @@ export default function AppRoot() {
                 </View>
               ))}
             </View>
-          ) : null
+          ) : null}
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
           <View style={styles.employeeRateField}>
             <Field
