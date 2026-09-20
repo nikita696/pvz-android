@@ -1,7 +1,6 @@
 import { useNetworkState } from 'expo-network';
 import { StatusBar } from 'expo-status-bar';
 import {
-  Archive,
   ChevronDown,
   ChevronRight,
   Cog,
@@ -1057,6 +1056,7 @@ export default function AppRoot() {
 
             <SelectedDayPanel
               activeEmployees={activeEmployees}
+              archivedEmployees={archivedEmployees}
               expandedEmployees={expandedSelectedDayEmployees}
               employeesOpen={selectedDayEmployeesOpen}
               selectedDate={selectedDate}
@@ -1064,6 +1064,8 @@ export default function AppRoot() {
               selectedMonth={selectedMonth}
               shiftCount={selectedDayShifts.length}
               state={state}
+              onDeleteArchivedEmployee={openDeleteEmployeeDialog}
+              onRestoreArchivedEmployee={(employeeId) => void restoreArchivedEmployee(employeeId)}
               onToggleEmployee={toggleSelectedDayEmployee}
               onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
             />
@@ -1238,15 +1240,7 @@ export default function AppRoot() {
                       <PencilLine size={15} color={colors.accentText} />
                       <Text style={styles.smallButtonText}>Ставки</Text>
                     </Pressable>
-                    <Pressable
-                      style={[styles.archiveButton, styles.employeeManagerAction]}
-                      onPress={() => void archiveEmployee(employee.id)}
-                      hitSlop={8}
-                      testID={`archive-employee-${employee.name}`}
-                    >
-                      <Archive size={16} color={colors.accentText} />
-                      <Text style={styles.archiveButtonText}>В архив</Text>
-                    </Pressable>
+
                   </View>
                 </View>
               ))
@@ -1254,49 +1248,6 @@ export default function AppRoot() {
               <Text style={styles.muted}>Пока никого нет.</Text>
             )}
           </View>
-          {archivedEmployees.length ? (
-            <View style={styles.archiveSection}>
-              <View style={styles.archiveSectionHeader}>
-                <View style={styles.archiveSectionTitle}>
-                  <Text style={styles.fieldLabel}>Архив</Text>
-                  <Text style={styles.muted}>Сотрудники здесь не участвуют в новых сменах и расчёте зарплаты.</Text>
-                </View>
-              </View>
-              {archivedEmployees.map((employee) => (
-                <View key={employee.id} style={styles.employeeManagerRow}>
-                  <View style={styles.employeeManagerHeader}>
-                    <View style={styles.employeeTitleRow}>
-                      <EmployeeAvatar name={employee.name} color={employee.color} muted />
-                      <View style={styles.employeeManagerInfo}>
-                        <Text style={styles.employeeName}>{employee.name}</Text>
-                        <Text style={styles.muted}>Архивирован</Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.employeeManagerActions}>
-                    <Pressable
-                      style={[styles.restoreButton, styles.employeeManagerAction]}
-                      onPress={() => void restoreArchivedEmployee(employee.id)}
-                      hitSlop={8}
-                      testID={`restore-archived-employee-${employee.name}`}
-                    >
-                      <RefreshCw size={15} color={colors.accentText} />
-                      <Text style={styles.archiveButtonText}>Вернуть</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.deleteTextButton, styles.employeeManagerAction]}
-                      onPress={() => openDeleteEmployeeDialog(employee.id)}
-                      hitSlop={8}
-                      testID={`delete-archived-employee-${employee.name}`}
-                    >
-                      <Trash2 size={15} color={colors.dangerText} />
-                      <Text style={styles.deleteTextButtonText}>Удалить</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : null}
           <Field label="Имя" value={employeeName} onChangeText={setEmployeeName} testID="employee-name" />
           <View style={styles.employeeRateField}>
             <Field
@@ -1328,37 +1279,73 @@ export default function AppRoot() {
             setDialog('employees');
           }}
         >
-          <Text style={styles.muted}>
-            Старые смены останутся по старым ставкам. Дата ниже определяет, с какой даты начинается изменение.
-          </Text>
-          <Field
-            label="Действует с, ДД.ММ.ГГГГ"
-            value={rateEffectiveFromText}
-            onChangeText={setRateEffectiveFromText}
-            placeholder="13.09.2026"
-            testID="employee-rate-effective-from"
-          />
-          <Field
-            label="Будни, ₽"
-            value={weekdayRate}
-            onChangeText={setWeekdayRate}
-            keyboardType="numeric"
-            testID="edit-employee-weekday-rate"
-          />
-          <Field
-            label="Выходные, ₽"
-            value={weekendRate}
-            onChangeText={setWeekendRate}
-            keyboardType="numeric"
-            testID="edit-employee-weekend-rate"
-          />
+          <View style={styles.rateDialogHeader}>
+            <View style={styles.rateDialogHeaderText}>
+              <Text style={styles.rateDialogEyebrow}>НОВАЯ СТАВКА</Text>
+              <Text style={styles.rateDialogTitle}>Ставка начинает действовать с выбранной даты</Text>
+            </View>
+            <View style={styles.rateDialogBadge}>
+              <Text style={styles.rateDialogBadgeText}>История сохраняется</Text>
+            </View>
+          </View>
+
+          <View style={styles.rateCurrentCard}>
+            <Text style={styles.rateCurrentLabel}>Текущая ставка</Text>
+            <View style={styles.rateCurrentValues}>
+              <View style={styles.rateCurrentItem}>
+                <Text style={styles.rateCurrentValue}>
+                  {formatMoney(state.employees.find((employee) => employee.id === employeeRatesId)?.weekdayRate ?? 0)}
+                </Text>
+                <Text style={styles.rateCurrentSub}>будни</Text>
+              </View>
+              <View style={styles.rateCurrentDivider} />
+              <View style={styles.rateCurrentItem}>
+                <Text style={styles.rateCurrentValue}>
+                  {formatMoney(state.employees.find((employee) => employee.id === employeeRatesId)?.weekendRate ?? 0)}
+                </Text>
+                <Text style={styles.rateCurrentSub}>выходные</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.rateForm}>
+            <Field
+              label="Действует с"
+              value={rateEffectiveFromText}
+              onChangeText={setRateEffectiveFromText}
+              placeholder="13.09.2026"
+              testID="employee-rate-effective-from"
+            />
+            <View style={styles.rateInputsRow}>
+              <View style={styles.rateInputHalf}>
+                <Field
+                  label="Будни, ₽"
+                  value={weekdayRate}
+                  onChangeText={setWeekdayRate}
+                  keyboardType="numeric"
+                  testID="edit-employee-weekday-rate"
+                />
+              </View>
+              <View style={styles.rateInputHalf}>
+                <Field
+                  label="Выходные, ₽"
+                  value={weekendRate}
+                  onChangeText={setWeekendRate}
+                  keyboardType="numeric"
+                  testID="edit-employee-weekend-rate"
+                />
+              </View>
+            </View>
+            <Text style={styles.rateHint}>Смены до этой даты останутся рассчитаны по старой ставке.</Text>
+          </View>
+
           <Pressable
             disabled={saving}
-            style={[styles.primaryButton, saving && styles.disabledButton]}
+            style={[styles.primaryButton, styles.rateSaveButton, saving && styles.disabledButton]}
             onPress={() => void saveEmployeeRates()}
             testID="save-employee-rates"
           >
-            <Text style={styles.primaryButtonText}>Сохранить ставки</Text>
+            <Text style={styles.primaryButtonText}>Сохранить новую ставку</Text>
           </Pressable>
         </Dialog>
 
@@ -2128,6 +2115,104 @@ const styles = StyleSheet.create({
   employeeRateField: {
     gap: 4,
   },
+  rateDialogHeader: {
+    gap: 8,
+  },
+  rateDialogHeaderText: {
+    gap: 3,
+  },
+  rateDialogEyebrow: {
+    fontFamily: appFont,
+    color: colors.accentStrong,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+  },
+  rateDialogTitle: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '800',
+  },
+  rateDialogBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  rateDialogBadgeText: {
+    fontFamily: appFont,
+    color: colors.accentStrong,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  rateCurrentCard: {
+    borderRadius: 16,
+    padding: 14,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 10,
+  },
+  rateCurrentLabel: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  rateCurrentValues: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rateCurrentItem: {
+    flex: 1,
+    gap: 2,
+  },
+  rateCurrentValue: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '900',
+  },
+  rateCurrentSub: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  rateCurrentDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: colors.border,
+    marginHorizontal: 12,
+  },
+  rateForm: {
+    gap: 10,
+  },
+  rateInputsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  rateInputHalf: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rateHint: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
+  },
+  rateSaveButton: {
+    marginTop: 2,
+  },
   employeeRateHint: {
     fontFamily: appFont,
     color: colors.muted,
@@ -2296,12 +2381,6 @@ const styles = StyleSheet.create({
   employeeManagerList: {
     gap: 8,
   },
-  archiveSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 12,
-    gap: 8,
-  },
   employeeManagerRow: {
     borderRadius: 14,
     padding: 12,
@@ -2332,22 +2411,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  archiveButton: {
-    minHeight: 34,
-    borderRadius: 17,
-    paddingHorizontal: 10,
-    backgroundColor: colors.accent,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  archiveButtonText: {
-    fontFamily: appFont,
-    color: colors.accentText,
-    fontSize: 11,
-    fontWeight: '900',
-  },
   restoreButton: {
     minHeight: 40,
     borderRadius: 20,
@@ -2357,12 +2420,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-  },
-  archiveSectionHeader: {
-    gap: 4,
-  },
-  archiveSectionTitle: {
-    gap: 3,
   },
   shiftStatus: {
     fontFamily: appFont,
