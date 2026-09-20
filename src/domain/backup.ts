@@ -121,16 +121,24 @@ function normalizeEmployee(value: unknown, index: number): Employee {
   }
 
   const id = readId(value.id, 'сотрудника');
-  const rate = Number(value.dailyRate);
+  const legacyRate = Number(value.dailyRate);
+  const weekdayRate = Number(value.weekdayRate ?? value.dailyRate);
+  const weekendRate = Number(value.weekendRate ?? value.dailyRate);
 
-  if (!Number.isSafeInteger(rate) || rate < 0 || rate > 100_000_000) {
+  if (
+    !Number.isSafeInteger(legacyRate) || legacyRate < 0 || legacyRate > 100_000_000 ||
+    !Number.isSafeInteger(weekdayRate) || weekdayRate < 0 || weekdayRate > 100_000_000 ||
+    !Number.isSafeInteger(weekendRate) || weekendRate < 0 || weekendRate > 100_000_000
+  ) {
     throw new InvalidBackupError(`Некорректная ставка у сотрудника №${index + 1}.`);
   }
 
   return {
     id,
     name: readText(value.name, 80, 'имя сотрудника'),
-    dailyRate: rate,
+    dailyRate: legacyRate,
+    weekdayRate,
+    weekendRate,
     color: normalizeEmployeeColor(value.color, id),
     active: value.active !== false,
     createdAt: isValidTimestamp(value.createdAt)
