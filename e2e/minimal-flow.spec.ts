@@ -214,10 +214,14 @@ test('invite code connects to the private PVZ workspace', async ({ page }) => {
 
   await expect(page.getByText(LOCATION)).toBeVisible();
   await page.getByTestId('open-employees').click();
+  await expect(page.getByTestId('employee-name')).toBeVisible();
+  await expect(page.getByTestId(`archive-employee-${NICK}`)).toHaveCount(0);
+  await page.getByTestId('close-employees').click();
+  await expect(page.getByTestId('employee-archive-panel')).toBeVisible();
   await expect(page.getByTestId(`archive-employee-${NICK}`)).toBeVisible();
   await page.reload();
   await expect(page.getByText(LOCATION)).toBeVisible();
-  await page.getByTestId('open-employees').click();
+  await expect(page.getByTestId('employee-archive-panel')).toBeVisible();
   await expect(page.getByTestId(`archive-employee-${NICK}`)).toBeVisible();
 });
 
@@ -640,8 +644,11 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await expect(page.getByText(OWNER).first()).toBeVisible();
 
   await page.getByTestId('open-employees').click();
+  await expect(page.getByTestId('employee-name')).toBeVisible();
+  await page.getByTestId('close-employees').click();
+  await expect(page.getByTestId('employee-archive-panel')).toBeVisible();
   await page.getByTestId(`archive-employee-${IRA}`).click();
-  await page.getByTestId(`delete-archived-employee-${IRA}`).click();
+  await expect(page.getByTestId(`delete-archived-employee-${IRA}`)).toBeVisible();
   await expect(page.getByText('Смен: 1', { exact: true })).toBeVisible();
   await expect(page.getByText('Выплат и удержаний: 0', { exact: true })).toBeVisible();
   await expect(page.getByTestId('confirm-delete-employee')).toHaveAttribute('aria-disabled', 'true');
@@ -654,9 +661,8 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
   await page.getByTestId('undo-delete-employee').click();
   await expect.poll(() => serverState.employees.some((employee) => employee.name === IRA)).toBe(true);
   await expect(page.getByTestId('employee-undo-banner')).toContainText(`${IRA} возвращён`);
-  await page.getByTestId('open-employees').click();
+  await expect(page.getByTestId('employee-archive-panel')).toBeVisible();
   await expect(page.getByTestId(`delete-archived-employee-${IRA}`)).toBeVisible();
-  await page.getByTestId('close-employees').click();
   await expect(page.getByText(`2 000 ${RUBLE}`).first()).toBeVisible();
   await expect(page.getByText('\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u044e', { exact: true })).toHaveCount(0);
 
