@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   Cog,
+  Archive,
   PencilLine,
   Plus,
   RefreshCw,
@@ -1056,7 +1057,6 @@ export default function AppRoot() {
 
             <SelectedDayPanel
               activeEmployees={activeEmployees}
-              archivedEmployees={archivedEmployees}
               expandedEmployees={expandedSelectedDayEmployees}
               employeesOpen={selectedDayEmployeesOpen}
               selectedDate={selectedDate}
@@ -1064,11 +1064,92 @@ export default function AppRoot() {
               selectedMonth={selectedMonth}
               shiftCount={selectedDayShifts.length}
               state={state}
-              onDeleteArchivedEmployee={openDeleteEmployeeDialog}
-              onRestoreArchivedEmployee={(employeeId) => void restoreArchivedEmployee(employeeId)}
               onToggleEmployee={toggleSelectedDayEmployee}
               onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
             />
+            <View style={styles.employeeArchivePanel}>
+              <View style={styles.employeeArchiveHeader}>
+                <View style={styles.employeeArchiveTitleRow}>
+                  <Archive size={18} color={colors.muted} />
+                  <View style={styles.employeeArchiveTitleText}>
+                    <Text style={styles.employeeArchiveTitle}>Сотрудники</Text>
+                    <Text style={styles.employeeArchiveSubtitle}>
+                      {activeEmployees.length} активных · {archivedEmployees.length} в архиве
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.employeeArchiveHint}>Управление</Text>
+              </View>
+
+              {activeEmployees.length ? (
+                <View style={styles.employeeArchiveList}>
+                  {activeEmployees.map((employee) => (
+                    <View key={employee.id} style={styles.employeeArchiveRow}>
+                      <View style={styles.employeeArchiveInfo}>
+                        <EmployeeAvatar name={employee.name} color={employee.color} />
+                        <View style={styles.employeeArchiveNameBlock}>
+                          <Text style={[styles.employeeArchiveName, { color: employee.color }]}>
+                            {employee.name}
+                          </Text>
+                          <Text style={styles.muted}>
+                            Будни {formatMoney(employee.weekdayRate ?? employee.dailyRate)} · выхи {formatMoney(employee.weekendRate ?? employee.dailyRate)}
+                          </Text>
+                        </View>
+                      </View>
+                      <Pressable
+                        style={styles.archiveActionButton}
+                        onPress={() => void archiveEmployee(employee.id)}
+                        disabled={saving}
+                        testID={"archive-employee-" + employee.name}
+                      >
+                        <Archive size={14} color={colors.text} />
+                        <Text style={styles.archiveActionText}>В архив</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {archivedEmployees.length ? (
+                <View style={styles.archivedListSection}>
+                  <View style={styles.archivedListHeader}>
+                    <Text style={styles.archivedListTitle}>Архив</Text>
+                    <Text style={styles.muted}>
+                      {archivedEmployees.length} {formatEmployeeCount(archivedEmployees.length)}
+                    </Text>
+                  </View>
+                  <View style={styles.employeeArchiveList}>
+                    {archivedEmployees.map((employee) => (
+                      <View key={employee.id} style={styles.employeeArchiveRow}>
+                        <View style={styles.employeeArchiveInfo}>
+                          <EmployeeAvatar name={employee.name} color={employee.color} muted />
+                          <Text style={styles.employeeArchiveName}>{employee.name}</Text>
+                        </View>
+                        <View style={styles.archiveRowActions}>
+                          <Pressable
+                            style={styles.archiveRestoreButton}
+                            onPress={() => void restoreArchivedEmployee(employee.id)}
+                            disabled={saving}
+                            testID={"restore-archived-employee-" + employee.name}
+                          >
+                            <RefreshCw size={14} color={colors.accentText} />
+                            <Text style={styles.archiveRestoreText}>Вернуть</Text>
+                          </Pressable>
+                          <Pressable
+                            style={styles.archiveDeleteButton}
+                            onPress={() => openDeleteEmployeeDialog(employee.id)}
+                            disabled={saving}
+                            testID={"delete-archived-employee-" + employee.name}
+                          >
+                            <Trash2 size={14} color={colors.dangerText} />
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
           </ScrollView>
         )}
 
@@ -1216,6 +1297,11 @@ export default function AppRoot() {
           closeTestID="close-employees"
           onClose={() => setDialog(null)}
         >
+          <ScrollView
+            style={styles.employeeManagerScroll}
+            contentContainerStyle={styles.employeeManagerScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
           <View style={styles.employeeManagerList}>
             {activeEmployees.length ? (
               activeEmployees.map((employee) => (
@@ -1269,6 +1355,7 @@ export default function AppRoot() {
           <Pressable style={styles.primaryButton} onPress={addEmployee} testID="save-employee">
             <Text style={styles.primaryButtonText}>Добавить</Text>
           </Pressable>
+          </ScrollView>
         </Dialog>
 
         <Dialog
@@ -2378,6 +2465,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
     borderColor: colors.accent,
   },
+  employeeManagerScroll: {
+    flexShrink: 1,
+  },
+  employeeManagerScrollContent: {
+    gap: 14,
+    paddingBottom: 2,
+  },
   employeeManagerList: {
     gap: 8,
   },
@@ -2410,6 +2504,123 @@ const styles = StyleSheet.create({
   employeeManagerAction: {
     flex: 1,
     minWidth: 0,
+  },
+  employeeArchivePanel: {
+    borderRadius: 18,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    gap: 12,
+  },
+  employeeArchiveHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  employeeArchiveTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  employeeArchiveTitleText: {
+    gap: 2,
+  },
+  employeeArchiveTitle: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  employeeArchiveSubtitle: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  employeeArchiveHint: {
+    fontFamily: appFont,
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  employeeArchiveList: {
+    gap: 8,
+  },
+  employeeArchiveRow: {
+    minHeight: 56,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  employeeArchiveInfo: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  employeeArchiveNameBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  employeeArchiveName: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  archiveActionButton: {
+    minHeight: 36,
+    borderRadius: 18,
+    paddingHorizontal: 11,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    flexShrink: 0,
+  },
+  archiveActionText: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  archivedListSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+    gap: 8,
+  },
+  archivedListHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  archivedListTitle: {
+    fontFamily: appFont,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  archiveRowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
   },
   restoreButton: {
     minHeight: 40,
