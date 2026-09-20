@@ -25,6 +25,17 @@ export function getMonthShifts(state: AppState, month: string): Shift[] {
   return state.shifts.filter((shift) => isInMonth(shift.date, month));
 }
 
+export function getShiftFraction(state: AppState, shift: Shift): number {
+  const activeEmployeeIds = new Set(
+    state.employees.filter((employee) => employee.active).map((employee) => employee.id),
+  );
+  const employeesOnShift = state.shifts.filter(
+    (candidate) => candidate.date === shift.date && activeEmployeeIds.has(candidate.employeeId),
+  ).length;
+
+  return employeesOnShift === 2 ? 0.5 : 1;
+}
+
 export function getEmployeeMonthShiftCounts(
   state: AppState,
   employeeId: string,
@@ -36,8 +47,10 @@ export function getEmployeeMonthShiftCounts(
   );
 
   return {
-    total: monthShifts.length,
-    worked: monthShifts.filter((shift) => shift.date <= cutoffDate).length,
+    total: monthShifts.reduce((sum, shift) => sum + getShiftFraction(state, shift), 0),
+    worked: monthShifts
+      .filter((shift) => shift.date <= cutoffDate)
+      .reduce((sum, shift) => sum + getShiftFraction(state, shift), 0),
   };
 }
 
@@ -46,7 +59,9 @@ export function getEmployeeWorkedShiftCount(
   employeeId: string,
   cutoffDate = isoDateFromLocalDate(),
 ): number {
-  return state.shifts.filter((shift) => shift.employeeId === employeeId && shift.date <= cutoffDate).length;
+  return state.shifts
+    .filter((shift) => shift.employeeId === employeeId && shift.date <= cutoffDate)
+    .reduce((sum, shift) => sum + getShiftFraction(state, shift), 0);
 }
 
 export function getEmployeeFirstShiftDate(state: AppState, employeeId: string): string | null {
@@ -77,7 +92,10 @@ export function calculateSalary(
   const workedEmployeeShifts = state.shifts.filter(
     (shift) => shift.employeeId === employee.id && shift.date <= cutoffDate,
   );
-  const workedShifts = workedEmployeeShifts.length;
+  const workedShifts = workedEmployeeShifts.reduce(
+    (sum, shift) => sum + getShiftFraction(state, shift),
+    0,
+  );
   const employeePayments = state.payments.filter(
     (payment) => payment.employeeId === employee.id && payment.paidAt <= cutoffDate,
   );
@@ -88,7 +106,7 @@ export function calculateSalary(
     .filter((payment) => payment.kind === 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
   const accrued = workedEmployeeShifts.reduce(
-    (sum, shift) => sum + getEmployeeShiftRate(employee, shift.date),
+    (sum, shift) => sum + getEmployeeShiftRate(employee, shift.date) * getShiftFraction(state, shift),
     0,
   );
   const paidAndDeductions = paid + deductions;
