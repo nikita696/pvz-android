@@ -101,8 +101,10 @@ async function applyAction(workspaceId: string, body: ApiAction) {
 
     if (
       !body.name.trim() ||
+      typeof weekdayRate !== 'number' ||
       !Number.isFinite(weekdayRate) ||
       weekdayRate < 0 ||
+      typeof weekendRate !== 'number' ||
       !Number.isFinite(weekendRate) ||
       weekendRate < 0
     ) {
