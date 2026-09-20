@@ -96,7 +96,16 @@ async function applyAction(workspaceId: string, body: ApiAction) {
       ? color
       : undefined;
 
-    if (!body.name.trim() || !Number.isFinite(body.weekdayRate) || body.weekdayRate < 0 || !Number.isFinite(body.weekendRate) || body.weekendRate < 0) {
+    const weekdayRate = body.weekdayRate ?? body.dailyRate;
+    const weekendRate = body.weekendRate ?? body.dailyRate;
+
+    if (
+      !body.name.trim() ||
+      !Number.isFinite(weekdayRate) ||
+      weekdayRate < 0 ||
+      !Number.isFinite(weekendRate) ||
+      weekendRate < 0
+    ) {
       throw new Error('BAD_REQUEST');
     }
 
@@ -104,7 +113,7 @@ async function applyAction(workspaceId: string, body: ApiAction) {
       throw new Error('BAD_REQUEST');
     }
 
-    await addEmployee(workspaceId, body.name.trim(), body.weekdayRate, body.weekendRate, validColor);
+    await addEmployee(workspaceId, body.name.trim(), weekdayRate, weekendRate, validColor);
     return;
   }
 
