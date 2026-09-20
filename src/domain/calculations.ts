@@ -74,9 +74,10 @@ export function calculateSalary(
 ): SalarySummary {
   void month;
 
-  const workedShifts = state.shifts.filter(
+  const workedEmployeeShifts = state.shifts.filter(
     (shift) => shift.employeeId === employee.id && shift.date <= cutoffDate,
-  ).length;
+  );
+  const workedShifts = workedEmployeeShifts.length;
   const employeePayments = state.payments.filter(
     (payment) => payment.employeeId === employee.id && payment.paidAt <= cutoffDate,
   );
@@ -86,7 +87,10 @@ export function calculateSalary(
   const deductions = employeePayments
     .filter((payment) => payment.kind === 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
-  const accrued = workedShifts * employee.dailyRate;
+  const accrued = workedEmployeeShifts.reduce(
+    (sum, shift) => sum + getEmployeeShiftRate(employee, shift.date),
+    0,
+  );
   const paidAndDeductions = paid + deductions;
 
   return {
@@ -119,4 +123,13 @@ export function getShiftCountByDate(state: AppState, date: string): number {
   );
 
   return state.shifts.filter((shift) => shift.date === date && activeEmployeeIds.has(shift.employeeId)).length;
+}
+
+
+export function getEmployeeShiftRate(employee: Employee, date: string): number {
+  const weekdayRate = employee.weekdayRate ?? employee.dailyRate;
+  const weekendRate = employee.weekendRate ?? employee.dailyRate;
+  const [year, month, day] = date.split('-').map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return weekday === 0 || weekday === 6 ? weekendRate : weekdayRate;
 }
