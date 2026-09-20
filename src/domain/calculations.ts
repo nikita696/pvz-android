@@ -81,45 +81,70 @@ export function hasShift(state: AppState, employeeId: string, date: string): boo
   return state.shifts.some((shift) => shift.employeeId === employeeId && shift.date === date);
 }
 
+export function getLatestPaymentDate(
+  state: AppState,
+  employeeId: string,
+  cutoffDate = isoDateFromLocalDate(),
+): string | null {
+  return (
+    state.payments
+      .filter(
+        (payment) =>
+          payment.employeeId === employeeId &&
+          payment.kind !== 'deduction' &&
+          payment.paidAt <= cutoffDate,
+      )
+      .map((payment) => payment.paidAt)
+      .sort()
+      .at(-1) ?? null
+  );
+}
+
 export function calculateSalary(
   state: AppState,
   employee: Employee,
   month: string,
   cutoffDate = isoDateFromLocalDate(),
 ): SalarySummary {
-  void month;
+  const latestPaymentDate = getLatestPaymentDate(state, employee.id, cutoffDate);
 
-  const workedEmployeeShifts = state.shifts.filter(
-    (shift) => shift.employeeId === employee.id && shift.date <= cutoffDate,
+  const unpaidEmployeeShifts = state.shifts.filter(
+    (shift) =>
+      shift.employeeId === employee.id &&
+      isInMonth(shift.date, month) &&
+      shift.date <= cutoffDate &&
+      (!latestPaymentDate || shift.date >= latestPaymentDate),
   );
-  const workedShifts = workedEmployeeShifts.reduce(
+
+  const workedShifts = unpaidEmployeeShifts.reduce(
     (sum, shift) => sum + getShiftFraction(state, shift),
     0,
   );
-  const employeePayments = state.payments.filter(
-    (payment) => payment.employeeId === employee.id && payment.paidAt <= cutoffDate,
-  );
-  const paid = employeePayments
-    .filter((payment) => payment.kind !== 'deduction')
+
+  const deductions = state.payments
+    .filter(
+      (payment) =>
+        payment.employeeId === employee.id &&
+        payment.kind === 'deduction' &&
+        payment.paidAt <= cutoffDate &&
+        (!latestPaymentDate || payment.paidAt >= latestPaymentDate),
+    )
     .reduce((sum, payment) => sum + payment.amount, 0);
-  const deductions = employeePayments
-    .filter((payment) => payment.kind === 'deduction')
-    .reduce((sum, payment) => sum + payment.amount, 0);
-  const accrued = workedEmployeeShifts.reduce(
+
+  const accrued = unpaidEmployeeShifts.reduce(
     (sum, shift) => sum + getEmployeeShiftRate(employee, shift.date) * getShiftFraction(state, shift),
     0,
   );
-  const paidAndDeductions = paid + deductions;
 
   return {
     employeeId: employee.id,
     workedShifts,
     dailyRate: employee.dailyRate,
     accrued,
-    paid,
+    paid: 0,
     deductions,
-    paidAndDeductions,
-    due: Math.max(0, accrued - paidAndDeductions),
+    paidAndDeductions: deductions,
+    due: Math.max(0, accrued - deductions),
   };
 }
 
@@ -128,8 +153,6 @@ export function calculateTotalDue(
   month: string,
   cutoffDate = isoDateFromLocalDate(),
 ): number {
-  void month;
-
   return state.employees
     .filter((employee) => employee.active)
     .reduce((sum, employee) => sum + calculateSalary(state, employee, month, cutoffDate).due, 0);
@@ -142,7 +165,6 @@ export function getShiftCountByDate(state: AppState, date: string): number {
 
   return state.shifts.filter((shift) => shift.date === date && activeEmployeeIds.has(shift.employeeId)).length;
 }
-
 
 export function getEmployeeShiftRate(employee: Employee, date: string): number {
   let weekdayRate = employee.weekdayRate ?? employee.dailyRate;
