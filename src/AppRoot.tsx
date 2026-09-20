@@ -1719,7 +1719,7 @@ function SalaryCard({
           <Text style={[styles.employeeName, { color: employee.color }]}>{employee.name}</Text>
         </View>
         <Text style={styles.muted}>
-          {salary.workedShifts} смен × {formatMoney(salary.dailyRate)} − {formatMoney(salary.paidAndDeductions)}
+          {salary.workedShifts} смен · начислено {formatMoney(salary.accrued)} − {formatMoney(salary.paidAndDeductions)}
         </Text>
         {salary.deductions > 0 ? (
           <Text style={styles.deductionLine}>Удержано {formatMoney(salary.deductions)}</Text>
