@@ -628,6 +628,18 @@ export async function archiveEmployee(workspaceId: string, employeeId: string) {
   `;
 }
 
+export async function restoreArchivedEmployee(workspaceId: string, employeeId: string) {
+  const sql = getSql();
+  await ensureSchema();
+  await sql`
+    update employees
+    set active = true
+    where id = ${employeeId}
+      and workspace_id = ${workspaceId}
+      and active = false
+  `;
+}
+
 export async function deleteArchivedEmployee(workspaceId: string, employeeId: string, undoToken: string) {
   const sql = getSql();
   await ensureSchema();
