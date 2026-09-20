@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, ChevronRight, RefreshCw, Trash2 } from 'lucide-react-native';
+import { ChevronDown, ChevronRight } from 'lucide-react-native';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -15,7 +15,6 @@ import { EmployeeAvatar } from './EmployeeAvatar';
 
 type SelectedDayPanelProps = {
   activeEmployees: Employee[];
-  archivedEmployees: Employee[];
   expandedEmployees: Record<string, boolean>;
   employeesOpen: boolean;
   selectedDate: string;
@@ -23,15 +22,12 @@ type SelectedDayPanelProps = {
   selectedMonth: string;
   shiftCount: number;
   state: AppState;
-  onDeleteArchivedEmployee: (employeeId: string) => void;
-  onRestoreArchivedEmployee: (employeeId: string) => void;
   onToggleEmployee: (employeeId: string) => void;
   onToggleEmployeesOpen: () => void;
 };
 
 export function SelectedDayPanel({
   activeEmployees,
-  archivedEmployees,
   expandedEmployees,
   employeesOpen,
   selectedDate,
@@ -39,8 +35,6 @@ export function SelectedDayPanel({
   selectedMonth,
   shiftCount,
   state,
-  onDeleteArchivedEmployee,
-  onRestoreArchivedEmployee,
   onToggleEmployee,
   onToggleEmployeesOpen,
 }: SelectedDayPanelProps) {
@@ -153,52 +147,6 @@ export function SelectedDayPanel({
           )
         ) : null}
 
-        {archivedEmployees.length ? (
-          <View style={styles.archiveManagement}>
-            <View style={styles.archiveManagementHeader}>
-              <View style={styles.archiveManagementTitleRow}>
-                <Archive size={17} color={colors.muted} />
-                <View style={styles.archiveManagementTitleText}>
-                  <Text style={styles.archiveManagementTitle}>Архив</Text>
-                  <Text style={styles.archiveManagementSubtitle}>
-                    {archivedEmployees.length} {formatEmployeeCount(archivedEmployees.length)}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.archiveManagementHint}>Редко используемое</Text>
-            </View>
-
-            <View style={styles.archiveManagementList}>
-              {archivedEmployees.map((employee) => (
-                <View key={employee.id} style={styles.archiveEmployeeRow}>
-                  <View style={styles.archiveEmployeeInfo}>
-                    <EmployeeAvatar name={employee.name} color={employee.color} muted />
-                    <Text style={styles.archiveEmployeeName}>{employee.name}</Text>
-                  </View>
-                  <View style={styles.archiveEmployeeActions}>
-                    <Pressable
-                      style={styles.archiveRestoreButton}
-                      onPress={() => onRestoreArchivedEmployee(employee.id)}
-                      hitSlop={8}
-                      testID={`restore-archived-employee-${employee.name}`}
-                    >
-                      <RefreshCw size={14} color={colors.accentText} />
-                      <Text style={styles.archiveRestoreText}>Вернуть</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.archiveDeleteButton}
-                      onPress={() => onDeleteArchivedEmployee(employee.id)}
-                      hitSlop={8}
-                      testID={`delete-archived-employee-${employee.name}`}
-                    >
-                      <Trash2 size={14} color={colors.dangerText} />
-                    </Pressable>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : null}
       </View>
     </View>
   );
@@ -280,106 +228,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
     fontWeight: '900',
-  },
-  archiveManagement: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: 2,
-    padding: 12,
-    gap: 10,
-    backgroundColor: colors.panelSoft,
-  },
-  archiveManagementHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  archiveManagementTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  archiveManagementTitleText: {
-    gap: 1,
-  },
-  archiveManagementTitle: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  archiveManagementSubtitle: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  archiveManagementHint: {
-    fontFamily: appFont,
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  archiveManagementList: {
-    gap: 6,
-  },
-  archiveEmployeeRow: {
-    minHeight: 48,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    backgroundColor: colors.panel,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  archiveEmployeeInfo: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  archiveEmployeeName: {
-    fontFamily: appFont,
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  archiveEmployeeActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  archiveRestoreButton: {
-    minHeight: 34,
-    borderRadius: 17,
-    paddingHorizontal: 10,
-    backgroundColor: colors.accent,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  archiveRestoreText: {
-    fontFamily: appFont,
-    color: colors.accentText,
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  archiveDeleteButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.dangerBg,
-    borderWidth: 1,
-    borderColor: colors.dangerBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   selectedEmployeesList: {
     padding: 10,
@@ -479,14 +327,6 @@ const styles = StyleSheet.create({
 function formatDate(date: string): string {
   const [year, month, day] = date.split('-');
   return `${day}.${month}.${year}`;
-}
-
-function formatEmployeeCount(count: number): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'сотрудник';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'сотрудника';
-  return 'сотрудников';
 }
 
 function formatShiftCount(count: number): string {
