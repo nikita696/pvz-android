@@ -177,25 +177,6 @@ export async function ensureSchema() {
     on employee_rate_history (workspace_id, employee_id, effective_from)
   `;
   await sql`
-    insert into employee_rate_history (
-      id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
-    )
-    select
-      'rate-baseline-' || e.id,
-      e.workspace_id,
-      e.id,
-      date '1970-01-01',
-      coalesce(e.weekday_rate, e.daily_rate),
-      coalesce(e.weekend_rate, e.daily_rate)
-    from employees e
-    where not exists (
-      select 1 from employee_rate_history h
-      where h.employee_id = e.id
-        and h.workspace_id = e.workspace_id
-    )
-    on conflict (employee_id, effective_from) do nothing
-  `;
-  await sql`
     create table if not exists shifts (
       id text primary key,
       employee_id text not null references employees(id) on delete cascade,
@@ -240,6 +221,25 @@ export async function ensureSchema() {
     set weekday_rate = coalesce(weekday_rate, daily_rate),
         weekend_rate = coalesce(weekend_rate, daily_rate)
     where weekday_rate is null or weekend_rate is null
+  `;
+  await sql`
+    insert into employee_rate_history (
+      id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+    )
+    select
+      'rate-baseline-' || e.id,
+      e.workspace_id,
+      e.id,
+      date '1970-01-01',
+      coalesce(e.weekday_rate, e.daily_rate),
+      coalesce(e.weekend_rate, e.daily_rate)
+    from employees e
+    where not exists (
+      select 1 from employee_rate_history h
+      where h.employee_id = e.id
+        and h.workspace_id = e.workspace_id
+    )
+    on conflict (employee_id, effective_from) do nothing
   `;
   await sql`
     alter table employees
