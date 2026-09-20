@@ -1280,7 +1280,7 @@ export default function AppRoot() {
               value={weekdayRate}
               onChangeText={setWeekdayRate}
               keyboardType="numeric"
-              testID="employee-weekday-rate"
+              testID="employee-rate"
             />
             <Field
               label="Выходные, ₽"
