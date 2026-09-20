@@ -17,6 +17,10 @@ export interface Employee {
   id: string;
   name: string;
   dailyRate: number;
+  /** Rate for Monday-Friday. Falls back to dailyRate for old local data. */
+  weekdayRate?: number;
+  /** Rate for Saturday-Sunday. Falls back to dailyRate for old local data. */
+  weekendRate?: number;
   color: string;
   active: boolean;
   createdAt: string;
@@ -66,8 +70,8 @@ export interface SalarySummary {
 
 export type ApiAction =
   | { action: 'updateLocation'; name: string }
-  | { action: 'addEmployee'; name: string; dailyRate: number; color?: string }
-  | { action: 'updateEmployeeColor'; employeeId: string; color: string }
+  | { action: 'addEmployee'; name: string; weekdayRate: number; weekendRate: number; color?: string }
+  | { action: 'updateEmployeeColor'; employeeId: string; color: string }\n  | { action: 'updateEmployeeRates'; employeeId: string; weekdayRate: number; weekendRate: number }
   | { action: 'toggleShift'; employeeId: string; date: string }
   | { action: 'saveDayNote'; date: string; comment: string }
   | {
