@@ -1,4 +1,4 @@
-import { EMPLOYEE_COLOR_PALETTE, type AppState, type DayNote, type Employee, type SalaryPayment, type Shift } from './types';
+import { EMPLOYEE_COLOR_PALETTE, type AppState, type DayNote, type Employee, type EmployeeRateChange, type SalaryPayment, type Shift } from './types';
 
 export const BACKUP_FORMAT = 'pvz-android-backup';
 export const BACKUP_VERSION = 1;
@@ -124,6 +124,7 @@ function normalizeEmployee(value: unknown, index: number): Employee {
   const legacyRate = Number(value.dailyRate);
   const weekdayRate = Number(value.weekdayRate ?? value.dailyRate);
   const weekendRate = Number(value.weekendRate ?? value.dailyRate);
+  const rateHistory = normalizeRateHistory(value.rateHistory, weekdayRate, weekendRate);
 
   if (
     !Number.isSafeInteger(legacyRate) || legacyRate < 0 || legacyRate > 100_000_000 ||
@@ -139,12 +140,68 @@ function normalizeEmployee(value: unknown, index: number): Employee {
     dailyRate: legacyRate,
     weekdayRate,
     weekendRate,
+    rateHistory,
     color: normalizeEmployeeColor(value.color, id),
     active: value.active !== false,
     createdAt: isValidTimestamp(value.createdAt)
       ? new Date(value.createdAt).toISOString()
       : new Date(0).toISOString(),
   };
+}
+
+function normalizeRateHistory(
+  value: unknown,
+  weekdayRate: number,
+  weekendRate: number,
+): EmployeeRateChange[] {
+  if (value === undefined) {
+    return [{ effectiveFrom: '1970-01-01', weekdayRate, weekendRate }];
+  }
+
+  if (!Array.isArray(value) || value.length > 500) {
+    throw new InvalidBackupError('Некорректная история ставок.');
+  }
+
+  const history = value.map((item, index): EmployeeRateChange => {
+    if (!isRecord(item)) {
+      throw new InvalidBackupError(`Некорректная запись ставки №${index + 1}.`);
+    }
+
+    const itemWeekdayRate = Number(item.weekdayRate);
+    const itemWeekendRate = Number(item.weekendRate);
+
+    if (
+      !isValidDateString(item.effectiveFrom) ||
+      !Number.isSafeInteger(itemWeekdayRate) || itemWeekdayRate < 0 || itemWeekdayRate > 100_000_000 ||
+      !Number.isSafeInteger(itemWeekendRate) || itemWeekendRate < 0 || itemWeekendRate > 100_000_000
+    ) {
+      throw new InvalidBackupError(`Некорректная запись ставки №${index + 1}.`);
+    }
+
+    return {
+      effectiveFrom: item.effectiveFrom,
+      weekdayRate: itemWeekdayRate,
+      weekendRate: itemWeekendRate,
+    };
+  }).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+
+  const seen = new Set<string>();
+  for (const change of history) {
+    if (seen.has(change.effectiveFrom)) {
+      throw new InvalidBackupError('В истории ставок повторяется дата.');
+    }
+    seen.add(change.effectiveFrom);
+  }
+
+  if (!history.length) {
+    return [{ effectiveFrom: '1970-01-01', weekdayRate, weekendRate }];
+  }
+
+  return history;
+}
+
+function isValidDateString(value: unknown): value is string {
+  return typeof value === 'string' && ISO_DATE.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
 }
 
 function normalizeShift(value: unknown, employeeIds: Set<string>): Shift {
