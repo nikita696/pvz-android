@@ -553,25 +553,26 @@ export async function updateEmployeeRates(
         weekend_rate = excluded.weekend_rate
   `;
 
-  const latest = await sql`
-    select weekday_rate, weekend_rate
-    from employee_rate_history
-    where employee_id = ${employeeId}
-      and workspace_id = ${workspaceId}
-    order by effective_from desc, created_at desc
-    limit 1
-  `;
-
-  if (latest.length) {
-    await sql`
-      update employees
-      set weekday_rate = ${Number(latest[0].weekday_rate)},
-          weekend_rate = ${Number(latest[0].weekend_rate)},
-          daily_rate = ${Number(latest[0].weekday_rate)}
-      where id = ${employeeId}
+  // employees.*rate is only a cache for the currently effective rate.
+  // A future-dated change must not become current before its effective date.
+  await sql`
+    update employees
+    set
+      weekday_rate = current_rate.weekday_rate,
+      weekend_rate = current_rate.weekend_rate,
+      daily_rate = current_rate.weekday_rate
+    from (
+      select weekday_rate, weekend_rate
+      from employee_rate_history
+      where employee_id = ${employeeId}
         and workspace_id = ${workspaceId}
-    `;
-  }
+        and effective_from <= current_date
+      order by effective_from desc, created_at desc
+      limit 1
+    ) as current_rate
+    where employees.id = ${employeeId}
+      and employees.workspace_id = ${workspaceId}
+  `;
 }
 
 export async function updateEmployeeColor(workspaceId: string, employeeId: string, color: string) {
