@@ -227,6 +227,67 @@ describe('payroll calculators', () => {
   });
 
 
+  it('matches the real Neon September 21 snapshot at 5500 ₽', () => {
+    const nikita = {
+      ...state.employees[0],
+      id: '743a27fb-d1cd-46cd-8bac-d106b5b1b996',
+      name: 'Никита',
+      weekdayRate: 3000,
+      weekendRate: 2500,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+      ],
+    };
+    const sasha = {
+      ...state.employees[0],
+      id: '8ad20885-a3fe-4b7a-9951-8bfcac2e42e9',
+      name: 'Саша',
+      weekdayRate: 3000,
+      weekendRate: 2500,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+      ],
+    };
+    const septemberState: AppState = {
+      ...state,
+      employees: [nikita, sasha],
+      shifts: [
+        ...[
+          '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-06',
+          '2026-09-07', '2026-09-08', '2026-09-09', '2026-09-13',
+          '2026-09-14', '2026-09-15', '2026-09-16', '2026-09-20',
+          '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-25',
+          '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30',
+        ].map((date, index) => ({ id: `nikita-${index}`, employeeId: nikita.id, date })),
+        ...[
+          '2026-09-04', '2026-09-05', '2026-09-10', '2026-09-11',
+          '2026-09-12', '2026-09-17', '2026-09-18', '2026-09-19',
+          '2026-09-24', '2026-09-25', '2026-09-26',
+        ].map((date, index) => ({ id: `sasha-${index}`, employeeId: sasha.id, date })),
+      ],
+      payments: [
+        { id: 'p-0906', employeeId: nikita.id, amount: 12500, paidAt: '2026-09-06', kind: 'payment', comment: 'СБП' },
+        { id: 'p-0912', employeeId: nikita.id, amount: 2500, paidAt: '2026-09-12', kind: 'payment', comment: 'СБП' },
+        { id: 'p-0913a', employeeId: nikita.id, amount: 7500, paidAt: '2026-09-13', kind: 'payment', comment: 'СБП' },
+        { id: 'p-0913b', employeeId: nikita.id, amount: 7500, paidAt: '2026-09-13', kind: 'payment', comment: 'СБП' },
+        { id: 'p-0920', employeeId: nikita.id, amount: 11500, paidAt: '2026-09-20', kind: 'payment', comment: 'Спб (будни по 3000₽)' },
+      ],
+    };
+
+    expect(getLatestPaymentDate(septemberState, nikita.id, '2026-09-21')).toBe('2026-09-20');
+    expect(calculateSalary(septemberState, nikita, '2026-09', '2026-09-21')).toMatchObject({
+      workedShifts: 2,
+      accrued: 5500,
+      paid: 0,
+      deductions: 0,
+      paidAndDeductions: 0,
+      due: 5500,
+    });
+    expect(calculateTotalDue(septemberState, '2026-09', '2026-09-21')).toBe(5500);
+  });
+
   it('checks if a shift is already marked', () => {
     expect(hasShift(state, 'emp-1', '2026-05-02')).toBe(true);
     expect(hasShift(state, 'emp-1', '2026-05-04')).toBe(false);
