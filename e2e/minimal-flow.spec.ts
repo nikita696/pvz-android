@@ -334,8 +334,8 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
         );
         history.push({
           effectiveFrom: action.effectiveFrom,
-          weekdayRate: action.weekdayRate,
-          weekendRate: action.weekendRate,
+          weekdayRate: action.weekdayRate ?? action.dailyRate ?? 0,
+          weekendRate: action.weekendRate ?? action.dailyRate ?? 0,
         });
         history.sort((first, second) => first.effectiveFrom.localeCompare(second.effectiveFrom));
         const latest = history[history.length - 1];
