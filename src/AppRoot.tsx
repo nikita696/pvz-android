@@ -1067,95 +1067,97 @@ export default function AppRoot() {
                 state={state}
                 onToggleEmployee={toggleSelectedDayEmployee}
                 onToggleEmployeesOpen={() => setSelectedDayEmployeesOpen((current) => !current)}
-              />
-              <View
-                style={styles.employeeArchivePanel}
-                testID="employee-archive-panel"
-                accessibilityLabel="Управление архивом сотрудников"
-              >
-              <View style={styles.employeeArchiveHeader}>
-                <View style={styles.employeeArchiveTitleRow}>
+                employeesExtraContent={
+                  <View
+                  style={styles.employeeArchivePanel}
+                  testID="employee-archive-panel"
+                  accessibilityLabel="Управление архивом сотрудников"
+                  >
+                  <View style={styles.employeeArchiveHeader}>
+                  <View style={styles.employeeArchiveTitleRow}>
                   <Archive size={18} color={colors.muted} />
                   <View style={styles.employeeArchiveTitleText}>
-                    <Text style={styles.employeeArchiveTitle}>Сотрудники</Text>
-                    <Text style={styles.employeeArchiveSubtitle}>
-                      {activeEmployees.length} активных · {archivedEmployees.length} в архиве
-                    </Text>
+                  <Text style={styles.employeeArchiveTitle}>Сотрудники</Text>
+                  <Text style={styles.employeeArchiveSubtitle}>
+                  {activeEmployees.length} активных · {archivedEmployees.length} в архиве
+                  </Text>
                   </View>
-                </View>
-                <Text style={styles.employeeArchiveHint}>Управление</Text>
-              </View>
-
-              {activeEmployees.length ? (
-                <View style={styles.employeeArchiveList}>
+                  </View>
+                  <Text style={styles.employeeArchiveHint}>Управление</Text>
+                  </View>
+                  
+                  {activeEmployees.length ? (
+                  <View style={styles.employeeArchiveList}>
                   {activeEmployees.map((employee) => (
-                    <View key={employee.id} style={styles.employeeArchiveRow}>
-                      <View style={styles.employeeArchiveInfo}>
-                        <EmployeeAvatar name={employee.name} color={employee.color} />
-                        <View style={styles.employeeArchiveNameBlock}>
-                          <Text style={[styles.employeeArchiveName, { color: employee.color }]}>
-                            {employee.name}
-                          </Text>
-                          <Text style={styles.muted}>
-                            Будни {formatMoney(employee.weekdayRate ?? employee.dailyRate)} · выхи {formatMoney(employee.weekendRate ?? employee.dailyRate)}
-                          </Text>
-                        </View>
-                      </View>
-                      <Pressable
-                        style={styles.archiveActionButton}
-                        onPress={() => void archiveEmployee(employee.id)}
-                        disabled={saving}
-                        testID={"archive-employee-" + employee.name}
-                      >
-                        <Archive size={14} color={colors.text} />
-                        <Text style={styles.archiveActionText}>В архив</Text>
-                      </Pressable>
-                    </View>
+                  <View key={employee.id} style={styles.employeeArchiveRow}>
+                  <View style={styles.employeeArchiveInfo}>
+                  <EmployeeAvatar name={employee.name} color={employee.color} />
+                  <View style={styles.employeeArchiveNameBlock}>
+                  <Text style={[styles.employeeArchiveName, { color: employee.color }]}>
+                  {employee.name}
+                  </Text>
+                  <Text style={styles.muted}>
+                  Будни {formatMoney(employee.weekdayRate ?? employee.dailyRate)} · выхи {formatMoney(employee.weekendRate ?? employee.dailyRate)}
+                  </Text>
+                  </View>
+                  </View>
+                  <Pressable
+                  style={styles.archiveActionButton}
+                  onPress={() => void archiveEmployee(employee.id)}
+                  disabled={saving}
+                  testID={"archive-employee-" + employee.name}
+                  >
+                  <Archive size={14} color={colors.text} />
+                  <Text style={styles.archiveActionText}>В архив</Text>
+                  </Pressable>
+                  </View>
                   ))}
-                </View>
-              ) : null}
-
-              {archivedEmployees.length ? (
-                <View style={styles.archivedListSection}>
+                  </View>
+                  ) : null}
+                  
+                  {archivedEmployees.length ? (
+                  <View style={styles.archivedListSection}>
                   <View style={styles.archivedListHeader}>
-                    <Text style={styles.archivedListTitle}>Архив</Text>
-                    <Text style={styles.muted}>
-                      {archivedEmployees.length} {formatEmployeeCount(archivedEmployees.length)}
-                    </Text>
+                  <Text style={styles.archivedListTitle}>Архив</Text>
+                  <Text style={styles.muted}>
+                  {archivedEmployees.length} {formatEmployeeCount(archivedEmployees.length)}
+                  </Text>
                   </View>
                   <View style={styles.employeeArchiveList}>
-                    {archivedEmployees.map((employee) => (
-                      <View key={employee.id} style={styles.employeeArchiveRow}>
-                        <View style={styles.employeeArchiveInfo}>
-                          <EmployeeAvatar name={employee.name} color={employee.color} muted />
-                          <Text style={styles.employeeArchiveName}>{employee.name}</Text>
-                        </View>
-                        <View style={styles.archiveRowActions}>
-                          <Pressable
-                            style={styles.archiveRestoreButton}
-                            onPress={() => void restoreArchivedEmployee(employee.id)}
-                            disabled={saving}
-                            testID={"restore-archived-employee-" + employee.name}
-                          >
-                            <RefreshCw size={14} color={colors.accentText} />
-                            <Text style={styles.archiveRestoreText}>Вернуть</Text>
-                          </Pressable>
-                          <Pressable
-                            style={styles.archiveDeleteButton}
-                            onPress={() => openDeleteEmployeeDialog(employee.id)}
-                            disabled={saving}
-                            testID={"delete-archived-employee-" + employee.name}
-                          >
-                            <Trash2 size={14} color={colors.dangerText} />
-                          </Pressable>
-                        </View>
-                      </View>
-                    ))}
+                  {archivedEmployees.map((employee) => (
+                  <View key={employee.id} style={styles.employeeArchiveRow}>
+                  <View style={styles.employeeArchiveInfo}>
+                  <EmployeeAvatar name={employee.name} color={employee.color} muted />
+                  <Text style={styles.employeeArchiveName}>{employee.name}</Text>
                   </View>
-                </View>
-              ) : null}
-              </View>
-            </View>
+                  <View style={styles.archiveRowActions}>
+                  <Pressable
+                  style={styles.archiveRestoreButton}
+                  onPress={() => void restoreArchivedEmployee(employee.id)}
+                  disabled={saving}
+                  testID={"restore-archived-employee-" + employee.name}
+                  >
+                  <RefreshCw size={14} color={colors.accentText} />
+                  <Text style={styles.archiveRestoreText}>Вернуть</Text>
+                  </Pressable>
+                  <Pressable
+                  style={styles.archiveDeleteButton}
+                  onPress={() => openDeleteEmployeeDialog(employee.id)}
+                  disabled={saving}
+                  testID={"delete-archived-employee-" + employee.name}
+                  >
+                  <Trash2 size={14} color={colors.dangerText} />
+                  </Pressable>
+                  </View>
+                  </View>
+                  ))}
+                  </View>
+                  </View>
+                  ) : null}
+                  </View>
+                  </View>
+                }
+              />
           </ScrollView>
         )}
 
