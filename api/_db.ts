@@ -1196,6 +1196,56 @@ export async function importWorkspaceState(workspaceId: string, value: unknown) 
       )
     `,
     transaction`
+      insert into employee_rate_history (
+        id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+      )
+      select
+        ${crypto.randomUUID()},
+        ${workspaceId},
+        item.id,
+        rate.effective_from,
+        rate.weekday_rate,
+        rate.weekend_rate
+      from jsonb_to_recordset(cast(${employeesJson} as jsonb)) as item(
+        id text,
+        name text,
+        daily_rate integer,
+        weekday_rate integer,
+        weekend_rate integer,
+        rate_history jsonb,
+        color text,
+        active boolean,
+        created_at timestamptz
+      )
+      cross join lateral jsonb_to_recordset(coalesce(item.rate_history, '[]'::jsonb)) as rate(
+        effective_from date,
+        weekday_rate integer,
+        weekend_rate integer
+      )
+      on conflict (employee_id, effective_from) do update
+      set weekday_rate = excluded.weekday_rate,
+          weekend_rate = excluded.weekend_rate
+    `,
+    transaction`
+      insert into employee_rate_history (
+        id, workspace_id, employee_id, effective_from, weekday_rate, weekend_rate
+      )
+      select
+        ${crypto.randomUUID()},
+        ${workspaceId},
+        employee.id,
+        date '1970-01-01',
+        employee.weekday_rate,
+        employee.weekend_rate
+      from employees as employee
+      where employee.workspace_id = ${workspaceId}
+        and not exists (
+          select 1 from employee_rate_history as history
+          where history.employee_id = employee.id
+            and history.workspace_id = ${workspaceId}
+        )
+    `,
+    transaction`
       insert into shifts (id, workspace_id, employee_id, work_date)
       select item.id, ${workspaceId}, item.employee_id, item.work_date
       from jsonb_to_recordset(cast(${shiftsJson} as jsonb)) as item(
