@@ -473,7 +473,12 @@ export default function AppRoot() {
     setEmployeeRatesId(employee.id);
     setWeekdayRate(String(employee.weekdayRate ?? employee.dailyRate));
     setWeekendRate(String(employee.weekendRate ?? employee.dailyRate));
-    setRateEffectiveFromText(formatDate(TODAY));
+    const latestRateChange = [...(employee.rateHistory ?? [])].sort((a, b) =>
+      b.effectiveFrom.localeCompare(a.effectiveFrom),
+    )[0];
+    setRateEffectiveFromText(
+      latestRateChange ? formatDate(latestRateChange.effectiveFrom) : formatDate(TODAY),
+    );
     setError('');
     setDialog('employeeRates');
   }
