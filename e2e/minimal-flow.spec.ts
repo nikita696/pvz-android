@@ -172,6 +172,9 @@ test('invite code connects to the private PVZ workspace', async ({ page }) => {
         id: 'emp-nick',
         name: NICK,
         dailyRate: 2500,
+        weekdayRate: 2500,
+        weekendRate: 2500,
+        rateHistory: [{ effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 }],
         color: '#a8d5ba',
         active: true,
         createdAt: '2026-05-01T00:00:00.000Z',
@@ -304,7 +307,14 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
           {
             id: employeeId,
             name: action.name,
-            dailyRate: action.dailyRate,
+            dailyRate: action.weekdayRate,
+            weekdayRate: action.weekdayRate,
+            weekendRate: action.weekendRate,
+            rateHistory: [{
+              effectiveFrom: '1970-01-01',
+              weekdayRate: action.weekdayRate,
+              weekendRate: action.weekendRate,
+            }],
             color: '#f0dd92',
             active: true,
             createdAt: '2026-05-31T00:00:00.000Z',
@@ -314,6 +324,36 @@ test('minimal schedule and salary flow renders', async ({ page }) => {
           ? [...serverState.shifts, { id: 'shift-2', employeeId, date: VISIBLE_DATE }]
           : serverState.shifts,
       };
+    }
+
+    if (action.action === 'updateEmployeeRates') {
+      const employee = serverState.employees.find((candidate) => candidate.id === action.employeeId);
+      if (employee) {
+        const history = [...(employee.rateHistory ?? [])].filter(
+          (change) => change.effectiveFrom !== action.effectiveFrom,
+        );
+        history.push({
+          effectiveFrom: action.effectiveFrom,
+          weekdayRate: action.weekdayRate,
+          weekendRate: action.weekendRate,
+        });
+        history.sort((first, second) => first.effectiveFrom.localeCompare(second.effectiveFrom));
+        const latest = history[history.length - 1];
+        serverState = {
+          ...serverState,
+          employees: serverState.employees.map((candidate) =>
+            candidate.id === employee.id
+              ? {
+                  ...candidate,
+                  weekdayRate: latest.weekdayRate,
+                  weekendRate: latest.weekendRate,
+                  dailyRate: latest.weekdayRate,
+                  rateHistory: history,
+                }
+              : candidate,
+          ),
+        };
+      }
     }
 
     if (action.action === 'addPayment') {
