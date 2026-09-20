@@ -1155,9 +1155,9 @@ export default function AppRoot() {
                   </View>
                   ) : null}
                   </View>
-                  </View>
                 }
               />
+            </View>
           </ScrollView>
         )}
 
