@@ -121,14 +121,26 @@ export function calculateSalary(
     0,
   );
 
-  const deductions = state.payments
-    .filter(
-      (payment) =>
-        payment.employeeId === employee.id &&
-        payment.kind === 'deduction' &&
-        payment.paidAt <= cutoffDate &&
-        (!latestPaymentDate || payment.paidAt >= latestPaymentDate),
-    )
+  const latestDatePayments = latestPaymentDate
+    ? state.payments.filter(
+        (payment) =>
+          payment.employeeId === employee.id &&
+          payment.paidAt === latestPaymentDate &&
+          payment.paidAt <= cutoffDate,
+      )
+    : [];
+
+  // The first payment on the latest payment date is the settlement checkpoint.
+  // Additional payments entered on that same date are real reductions of the
+  // balance remaining after that checkpoint.
+  const paid = latestDatePayments
+    .slice(1)
+    .filter((payment) => payment.kind !== 'deduction')
+    .reduce((sum, payment) => sum + payment.amount, 0);
+
+  const deductions = latestDatePayments
+    .slice(1)
+    .filter((payment) => payment.kind === 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
 
   const accrued = unpaidEmployeeShifts.reduce(
@@ -136,15 +148,17 @@ export function calculateSalary(
     0,
   );
 
+  const paidAndDeductions = paid + deductions;
+
   return {
     employeeId: employee.id,
     workedShifts,
     dailyRate: employee.dailyRate,
     accrued,
-    paid: 0,
+    paid,
     deductions,
-    paidAndDeductions: deductions,
-    due: Math.max(0, accrued - deductions),
+    paidAndDeductions,
+    due: Math.max(0, accrued - paidAndDeductions),
   };
 }
 
