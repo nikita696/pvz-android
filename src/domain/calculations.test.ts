@@ -273,6 +273,8 @@ describe('payroll calculators', () => {
         { id: 'p-0913a', employeeId: nikita.id, amount: 7500, paidAt: '2026-09-13', kind: 'payment', comment: 'СБП' },
         { id: 'p-0913b', employeeId: nikita.id, amount: 7500, paidAt: '2026-09-13', kind: 'payment', comment: 'СБП' },
         { id: 'p-0920', employeeId: nikita.id, amount: 11500, paidAt: '2026-09-20', kind: 'payment', comment: 'Спб (будни по 3000₽)' },
+        { id: 'p-0927a', employeeId: nikita.id, amount: 13000, paidAt: '2026-09-27', kind: 'payment', comment: 'Нал' },
+        { id: 'p-0927b', employeeId: nikita.id, amount: 2500, paidAt: '2026-09-27', kind: 'payment', comment: 'Свод баланса' },
       ],
     };
 
@@ -286,6 +288,55 @@ describe('payroll calculators', () => {
       due: 5500,
     });
     expect(calculateTotalDue(septemberState, '2026-09', '2026-09-21')).toBe(5500);
+
+    const sameDayPaymentState = {
+      ...septemberState,
+      payments: [
+        ...septemberState.payments,
+        { id: 'p-0921-extra', employeeId: nikita.id, amount: 2500, paidAt: '2026-09-21', kind: 'payment' as const, comment: 'Свод баланса' },
+      ],
+    };
+    expect(getLatestPaymentDate(sameDayPaymentState, nikita.id, '2026-09-21')).toBe('2026-09-21');
+    expect(calculateSalary(sameDayPaymentState, nikita, '2026-09', '2026-09-21')).toMatchObject({
+      workedShifts: 1,
+      accrued: 3000,
+      paid: 0,
+      due: 3000,
+    });
+  });
+
+
+
+  it('uses an additional same-day settlement payment to reduce the remaining balance', () => {
+    const nikita = {
+      ...state.employees[0],
+      id: 'nikita-same-day',
+      name: 'Никита',
+      weekdayRate: 3000,
+      weekendRate: 2500,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+      ],
+    };
+    const sameDayState: AppState = {
+      ...state,
+      employees: [nikita],
+      shifts: [{ id: 'shift-0927', employeeId: nikita.id, date: '2026-09-27' }],
+      payments: [
+        { id: 'checkpoint', employeeId: nikita.id, amount: 13000, paidAt: '2026-09-27', kind: 'payment', comment: 'Свод баланса' },
+        { id: 'settlement', employeeId: nikita.id, amount: 2500, paidAt: '2026-09-27', kind: 'payment', comment: 'Свод баланса' },
+      ],
+    };
+
+    expect(calculateSalary(sameDayState, nikita, '2026-09', '2026-09-27')).toMatchObject({
+      workedShifts: 1,
+      accrued: 2500,
+      paid: 2500,
+      deductions: 0,
+      paidAndDeductions: 2500,
+      due: 0,
+    });
   });
 
   it('checks if a shift is already marked', () => {
