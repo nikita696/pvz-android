@@ -358,6 +358,45 @@ describe('payroll calculators', () => {
     expect(calculateTotalDue(currentState, '2026-09', '2026-09-27')).toBe(0);
   });
 
+
+  it('counts deductions recorded after the latest payout date', () => {
+    const nikita = {
+      ...state.employees[0],
+      id: 'nikita-deduction',
+      name: 'Никита',
+      weekdayRate: 3000,
+      weekendRate: 2500,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+      ],
+    };
+    const deductionState: AppState = {
+      ...state,
+      employees: [nikita],
+      shifts: [
+        { id: 'shift-0927', employeeId: nikita.id, date: '2026-09-27' },
+        { id: 'shift-0928', employeeId: nikita.id, date: '2026-09-28' },
+        { id: 'shift-0929', employeeId: nikita.id, date: '2026-09-29' },
+        { id: 'shift-0930', employeeId: nikita.id, date: '2026-09-30' },
+      ],
+      payments: [
+        { id: 'checkpoint', employeeId: nikita.id, amount: 13000, paidAt: '2026-09-27', kind: 'payment', comment: 'Нал' },
+        { id: 'settlement', employeeId: nikita.id, amount: 2500, paidAt: '2026-09-27', kind: 'payment', comment: 'Свод баланса' },
+        { id: 'deduction', employeeId: nikita.id, amount: 1000, paidAt: '2026-09-29', kind: 'deduction', comment: 'Штраф за чемодан' },
+      ],
+    };
+
+    expect(calculateSalary(deductionState, nikita, '2026-09', '2026-09-30')).toMatchObject({
+      workedShifts: 4,
+      accrued: 11500,
+      paid: 2500,
+      deductions: 1000,
+      paidAndDeductions: 3500,
+      due: 8000,
+    });
+  });
+
   it('checks if a shift is already marked', () => {
     expect(hasShift(state, 'emp-1', '2026-05-02')).toBe(true);
     expect(hasShift(state, 'emp-1', '2026-05-04')).toBe(false);
