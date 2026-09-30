@@ -106,12 +106,15 @@ export function calculateSalary(
   month: string,
   cutoffDate = isoDateFromLocalDate(),
 ): SalarySummary {
+  // month is kept in the public signature for compatibility. Payroll is a
+  // continuous ledger and must not reset when the calendar month changes.
+  void month;
+
   const latestPaymentDate = getLatestPaymentDate(state, employee.id, cutoffDate);
 
   const unpaidEmployeeShifts = state.shifts.filter(
     (shift) =>
       shift.employeeId === employee.id &&
-      isInMonth(shift.date, month) &&
       shift.date <= cutoffDate &&
       (!latestPaymentDate || shift.date >= latestPaymentDate),
   );
