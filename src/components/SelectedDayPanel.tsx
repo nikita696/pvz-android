@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
   getEmployeeFirstShiftDate,
-  getEmployeeMonthShiftCounts,
   getEmployeeWorkedShiftCount,
   hasShift,
 } from '../domain/calculations';
@@ -19,7 +18,6 @@ type SelectedDayPanelProps = {
   employeesOpen: boolean;
   selectedDate: string;
   selectedDateLabel: string;
-  selectedMonth: string;
   shiftCount: number;
   state: AppState;
   onToggleEmployee: (employeeId: string) => void;
@@ -33,7 +31,6 @@ export function SelectedDayPanel({
   employeesOpen,
   selectedDate,
   selectedDateLabel,
-  selectedMonth,
   shiftCount,
   state,
   onToggleEmployee,
@@ -73,7 +70,6 @@ export function SelectedDayPanel({
           activeEmployees.length ? (
             <View style={styles.selectedEmployeesList}>
               {activeEmployees.map((employee) => {
-                const monthShiftCounts = getEmployeeMonthShiftCounts(state, employee.id, selectedMonth);
                 const workedShiftCount = getEmployeeWorkedShiftCount(state, employee.id);
                 const firstShiftDate = getEmployeeFirstShiftDate(state, employee.id);
                 const assigned = hasShift(state, employee.id, selectedDate);
@@ -115,16 +111,8 @@ export function SelectedDayPanel({
                       <View style={styles.selectedEmployeeStats}>
                         <View style={styles.selectedEmployeeStat}>
                           <View style={styles.selectedEmployeeStatLabelGroup}>
-                            <Text style={styles.selectedEmployeeStatLabel}>Смен</Text>
-                            <Text style={styles.selectedEmployeeStatSubLabel}>В этом месяце</Text>
-                          </View>
-                          <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
-                            {monthShiftCounts.worked} из {monthShiftCounts.total}
-                          </Text>
-                        </View>
-                        <View style={styles.selectedEmployeeStat}>
-                          <View style={styles.selectedEmployeeStatLabelGroup}>
-                            <Text style={styles.selectedEmployeeStatLabel}>За всё время</Text>
+                            <Text style={styles.selectedEmployeeStatLabel}>Смены</Text>
+                            <Text style={styles.selectedEmployeeStatSubLabel}>До сегодня</Text>
                           </View>
                           <Text style={[styles.selectedEmployeeStatValue, { color: employee.color }]}>
                             {formatShiftCount(workedShiftCount)}
