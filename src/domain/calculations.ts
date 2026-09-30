@@ -138,9 +138,14 @@ export function calculateSalary(
     .filter((payment) => payment.kind !== 'deduction')
     .reduce((sum, payment) => sum + payment.amount, 0);
 
-  const deductions = latestDatePayments
-    .slice(1)
-    .filter((payment) => payment.kind === 'deduction')
+  const deductions = state.payments
+    .filter(
+      (payment) =>
+        payment.employeeId === employee.id &&
+        payment.kind === 'deduction' &&
+        payment.paidAt <= cutoffDate &&
+        (!latestPaymentDate || payment.paidAt >= latestPaymentDate),
+    )
     .reduce((sum, payment) => sum + payment.amount, 0);
 
   const accrued = unpaidEmployeeShifts.reduce(
