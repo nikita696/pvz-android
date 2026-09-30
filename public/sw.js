@@ -1,6 +1,6 @@
 /* global caches, fetch, self, URL */
 
-const CACHE_NAME = 'pvz-android-shell-v3';
+const CACHE_NAME = 'pvz-android-shell-v4';
 const PRECACHE_ASSETS = ['/manifest.json', '/pwa-icon-192.png', '/pwa-icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -32,7 +32,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.pathname.startsWith('/_expo/static/')) {
-    event.respondWith(caches.match(request).then((cachedResponse) => cachedResponse ?? fetchAndCache(request)));
+    // Always prefer the current deployment for JavaScript/assets. Fall back to
+    // the cache only when the network is unavailable, so a deployed fix cannot
+    // stay hidden behind a stale PWA asset cache.
+    event.respondWith(fetchAndCache(request).catch(() => caches.match(request)));
     return;
   }
 
