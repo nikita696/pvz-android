@@ -5,7 +5,6 @@ import {
   calculateTotalDue,
   getDayNoteByDate,
   getEmployeeFirstShiftDate,
-  getEmployeeMonthShiftCounts,
   getEmployeeWorkedShiftCount,
   getLatestPaymentDate,
   getShiftCountByDate,
