@@ -1073,7 +1073,7 @@ export default function AppRoot() {
                 employeesOpen={selectedDayEmployeesOpen}
                 selectedDate={selectedDate}
                 selectedDateLabel={selectedDateLabel}
-                selectedMonth={selectedMonth}
+
                 shiftCount={selectedDayShifts.length}
                 state={state}
                 onToggleEmployee={toggleSelectedDayEmployee}
