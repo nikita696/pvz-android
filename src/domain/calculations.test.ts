@@ -109,11 +109,11 @@ describe('payroll calculators', () => {
     expect(salary.due).toBe(2200);
   });
 
-  it('does not include shifts outside the selected month or after the cutoff date', () => {
-    const salary = calculateSalary(state, state.employees[0], '2026-05', '2026-05-11');
+  it('keeps payroll independent from the selected calendar month', () => {
+    const maySalary = calculateSalary(state, state.employees[0], '2026-05', '2026-05-11');
+    const aprilSalary = calculateSalary(state, state.employees[0], '2026-04', '2026-05-11');
 
-    expect(salary.workedShifts).toBe(1);
-    expect(salary.accrued).toBe(2500);
+    expect(aprilSalary).toEqual(maySalary);
   });
 
   it('uses the rate that was effective on each unpaid shift date', () => {
@@ -410,11 +410,8 @@ describe('payroll calculators', () => {
     expect(getShiftCountByDate(state, '2026-05-02')).toBe(1);
   });
 
-  it('counts monthly employee shifts as total and worked through today', () => {
-    expect(getEmployeeMonthShiftCounts(state, 'emp-1', '2026-05', '2026-05-11')).toEqual({
-      total: 4,
-      worked: 3,
-    });
+  it('counts worked employee shifts cumulatively through today', () => {
+    expect(getEmployeeWorkedShiftCount(state, 'emp-1', '2026-05-11')).toBe(4);
   });
 
   it('counts all worked employee shifts through today', () => {
