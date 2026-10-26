@@ -129,6 +129,10 @@ describe('payroll calculators', () => {
     const historicalState: AppState = {
       ...state,
       employees: [employee, ...state.employees.slice(1)],
+      // The checkpoint excludes earlier shifts so this test isolates rate history.
+      payments: [
+        { id: 'rate-checkpoint', employeeId: employee.id, amount: 0, paidAt: '2026-05-01', kind: 'payment', comment: 'checkpoint' },
+      ],
     };
 
     expect(calculateSalary(historicalState, employee, '2026-05', '2026-05-03').accrued).toBe(
@@ -171,7 +175,7 @@ describe('payroll calculators', () => {
     expect(salary.accrued).toBe(1250);
   });
 
-  it('calculates Nikita September balance as 5500 on September 21', () => {
+  it('starts a new payroll period after the latest payout date', () => {
     const nikita = {
       ...state.employees[0],
       id: 'nikita',
@@ -220,13 +224,13 @@ describe('payroll calculators', () => {
     const salary = calculateSalary(septemberState, nikita, '2026-09', '2026-09-21');
 
     expect(getLatestPaymentDate(septemberState, 'nikita', '2026-09-21')).toBe('2026-09-20');
-    expect(salary.workedShifts).toBe(2);
-    expect(salary.accrued).toBe(5500);
-    expect(salary.due).toBe(5500);
+    expect(salary.workedShifts).toBe(1);
+    expect(salary.accrued).toBe(3000);
+    expect(salary.due).toBe(3000);
   });
 
 
-  it('matches the real Neon September 21 snapshot at 5500 ₽', () => {
+  it('matches the real Neon September 21 snapshot after closing the prior week', () => {
     const nikita = {
       ...state.employees[0],
       id: '743a27fb-d1cd-46cd-8bac-d106b5b1b996',
@@ -277,14 +281,16 @@ describe('payroll calculators', () => {
 
     expect(getLatestPaymentDate(septemberState, nikita.id, '2026-09-21')).toBe('2026-09-20');
     expect(calculateSalary(septemberState, nikita, '2026-09', '2026-09-21')).toMatchObject({
-      workedShifts: 2,
-      accrued: 5500,
+      workedShifts: 1,
+      accrued: 3000,
       paid: 0,
       deductions: 0,
       paidAndDeductions: 0,
-      due: 5500,
+      due: 3000,
     });
-    expect(calculateTotalDue(septemberState, '2026-09', '2026-09-21')).toBe(5500);
+    expect(
+      calculateTotalDue({ ...septemberState, employees: [nikita] }, '2026-09', '2026-09-21'),
+    ).toBe(3000);
   });
 
 
@@ -312,8 +318,8 @@ describe('payroll calculators', () => {
     };
 
     expect(calculateSalary(sameDayState, nikita, '2026-09', '2026-09-27')).toMatchObject({
-      workedShifts: 1,
-      accrued: 2500,
+      workedShifts: 0,
+      accrued: 0,
       paid: 2500,
       deductions: 0,
       paidAndDeductions: 2500,
@@ -347,8 +353,8 @@ describe('payroll calculators', () => {
 
     expect(getLatestPaymentDate(currentState, nikita.id, '2026-09-27')).toBe('2026-09-27');
     expect(calculateSalary(currentState, nikita, '2026-09', '2026-09-27')).toMatchObject({
-      workedShifts: 1,
-      accrued: 2500,
+      workedShifts: 0,
+      accrued: 0,
       paid: 2500,
       deductions: 0,
       paidAndDeductions: 2500,
@@ -387,12 +393,52 @@ describe('payroll calculators', () => {
     };
 
     expect(calculateSalary(deductionState, nikita, '2026-09', '2026-09-30')).toMatchObject({
-      workedShifts: 4,
-      accrued: 11500,
+      workedShifts: 3,
+      accrued: 9000,
       paid: 2500,
       deductions: 1000,
       paidAndDeductions: 3500,
-      due: 8000,
+      due: 5500,
+    });
+  });
+
+
+  it('starts Monday after a Sunday payout that covered the whole week', () => {
+    const nikita = {
+      ...state.employees[0],
+      id: 'nikita-week-boundary',
+      name: 'Никита',
+      weekdayRate: 3000,
+      weekendRate: 2500,
+      rateHistory: [
+        { effectiveFrom: '1970-01-01', weekdayRate: 2500, weekendRate: 2500 },
+        { effectiveFrom: '2026-09-14', weekdayRate: 3000, weekendRate: 2500 },
+      ],
+    };
+    const weekBoundaryState: AppState = {
+      ...state,
+      employees: [nikita],
+      shifts: [
+        { id: 'paid-sunday', employeeId: nikita.id, date: '2026-10-25' },
+        { id: 'new-week-monday', employeeId: nikita.id, date: '2026-10-26' },
+      ],
+      payments: [
+        { id: 'sunday-checkpoint', employeeId: nikita.id, amount: 11500, paidAt: '2026-10-25', kind: 'payment', comment: 'ЗП за неделю по воскресенье включительно' },
+      ],
+    };
+
+    expect(calculateSalary(weekBoundaryState, nikita, '2026-10', '2026-10-26')).toMatchObject({
+      workedShifts: 1,
+      accrued: 3000,
+      paid: 0,
+      deductions: 0,
+      paidAndDeductions: 0,
+      due: 3000,
+    });
+    expect(calculateSalary(weekBoundaryState, nikita, '2026-09', '2026-10-26')).toMatchObject({
+      workedShifts: 1,
+      accrued: 3000,
+      due: 3000,
     });
   });
 
