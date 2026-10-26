@@ -112,11 +112,13 @@ export function calculateSalary(
 
   const latestPaymentDate = getLatestPaymentDate(state, employee.id, cutoffDate);
 
+  // A settlement dated Sunday closes the full payroll week through that day.
+  // New unpaid work starts strictly after the settlement date, usually Monday.
   const unpaidEmployeeShifts = state.shifts.filter(
     (shift) =>
       shift.employeeId === employee.id &&
       shift.date <= cutoffDate &&
-      (!latestPaymentDate || shift.date >= latestPaymentDate),
+      (!latestPaymentDate || shift.date > latestPaymentDate),
   );
 
   const workedShifts = unpaidEmployeeShifts.reduce(
